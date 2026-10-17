@@ -1,0 +1,102 @@
+{
+  "best": {
+    "proof_stress": {
+      "label": "0.2% Proof Stress (MPa)",
+      "algorithm": "Extra trees",
+      "r2": 0.932,
+      "mae": 22.01
+    },
+    "tensile_strength": {
+      "label": "Tensile Strength (MPa)",
+      "algorithm": "Extra trees",
+      "r2": 0.953,
+      "mae": 19.03
+    },
+    "elongation": {
+      "label": "Elongation (%)",
+      "algorithm": "Extra trees",
+      "r2": 0.856,
+      "mae": 2.25
+    },
+    "reduction_in_area": {
+      "label": "Reduction in Area (%)",
+      "algorithm": "Extra trees",
+      "r2": 0.807,
+      "mae": 3.39
+    }
+  },
+  "comparison": {
+    "proof_stress": {
+      "Linear regression (2023 baseline)": {
+        "r2": 0.828,
+        "mae": 40.24
+      },
+      "Random forest": {
+        "r2": 0.914,
+        "mae": 24.9
+      },
+      "Extra trees": {
+        "r2": 0.932,
+        "mae": 22.01
+      },
+      "Gradient boosting": {
+        "r2": 0.904,
+        "mae": 26.16
+      }
+    },
+    "tensile_strength": {
+      "Linear regression (2023 baseline)": {
+        "r2": 0.691,
+        "mae": 58.27
+      },
+      "Random forest": {
+        "r2": 0.947,
+        "mae": 20.37
+      },
+      "Extra trees": {
+        "r2": 0.953,
+        "mae": 19.03
+      },
+      "Gradient boosting": {
+        "r2": 0.95,
+        "mae": 19.66
+      }
+    },
+    "elongation": {
+      "Linear regression (2023 baseline)": {
+        "r2": 0.49,
+        "mae": 4.73
+      },
+      "Random forest": {
+        "r2": 0.84,
+        "mae": 2.37
+      },
+      "Extra trees": {
+        "r2": 0.856,
+        "mae": 2.25
+      },
+      "Gradient boosting": {
+        "r2": 0.847,
+        "mae": 2.33
+      }
+    },
+    "reduction_in_area": {
+      "Linear regression (2023 baseline)": {
+        "r2": 0.457,
+        "mae": 7.03
+      },
+      "Random forest": {
+        "r2": 0.778,
+        "mae": 3.72
+      },
+      "Extra trees": {
+        "r2": 0.807,
+        "mae": 3.39
+      },
+      "Gradient boosting": {
+        "r2": 0.765,
+        "mae": 3.92
+      }
+    }
+  }
+}

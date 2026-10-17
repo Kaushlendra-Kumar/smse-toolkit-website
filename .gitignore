@@ -15,7 +15,6 @@ out/
 .env.local
 
 # Data & model artifacts (large; reproduced by training scripts)
-backend/data/raw/
 backend/data/micrographs/
 backend/models/*.pt
 backend/models/*.onnx
