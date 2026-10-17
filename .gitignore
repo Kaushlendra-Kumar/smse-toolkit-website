@@ -1,0 +1,27 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+.next/
+out/
+
+# Secrets
+.env
+.env.local
+
+# Data & model artifacts (large; reproduced by training scripts)
+backend/data/raw/
+backend/data/micrographs/
+backend/models/*.pt
+backend/models/*.onnx
+backend/models/*.joblib
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/

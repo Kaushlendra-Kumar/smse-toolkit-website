@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu&display=swap" rel="stylesheet">
+    {% load static %}
+    <title>SMSE TOOLKIT</title>
+    <link rel="stylesheet" type="text/css" href="{% static 'Home_Page/style.css' %}" />
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,400,700" rel="stylesheet"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/5.0.0/normalize.min.css">
+<script  src="{% static 'Home_Page/periodic_table.js' %}"></script>
+</head>
+
+
+
+<body>
+
+    <!-- Optional JavaScript; choose one of the two! -->
+
+    <!-- Option 1: Bootstrap Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM"
+        crossorigin="anonymous"></script>
+
+    <!-- Option 2: Separate Popper and Bootstrap JS -->
+    <!--
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js" integrity="sha384-IQsoLXl5PILFhosVNubq5LC7Qb9DXgDA9i+tQ8Zj3iwWAwPtgFTxbJ8NT4GN1R8p" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.min.js" integrity="sha384-cVKIPhGWiC2Al4u+LWgxfKTRIcfu0JTxR+EQDz/bgldoEyl4H0zUF0QKbrJ0EcQF" crossorigin="anonymous"></script>
+    -->
+
+
+    <div class="collapse" id="navbarToggleExternalContent">
+        <div class="bg-dark p-4">
+            <h5 class="text-white h4">Creators : MSE B19 Batch - NITC</h5>
+            <span class="text-muted">
+                <a href="https://www.linkedin.com/in/muhammedmusharaf007/">
+                    <button type="button" class="btn btn-outline-light">Muhammed Musharaf</button>
+                </a>
+                <a href="https://www.linkedin.com/in/peeyush-m/">
+                    <button type="button" class="btn btn-outline-light">Peeyush Mishra</button>
+                </a>
+                <a href="https://www.linkedin.com/in/kaushlendra-kumar-15b856194/">
+                    <button type="button" class="btn btn-outline-light">Kaushlendra Kumar</button>
+                </a>
+                <a href="https://www.linkedin.com/in/dhananjay-pawe-598282194/">
+                    <button type="button" class="btn btn-outline-light">Dhananjay Pawe</button>
+                </a>
+            </span>
+        </div>
+    </div>
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="http://www.nitc.ac.in/index.php/?url=department/index/27">
+                <img src="{% static 'Home_Page/images/NITC_LOGO.png' %}" alt="" width="43" height="43">
+            </a>
+
+            <a class="navbar-brand" href="#">SCHOOL OF MATERIALS SCIENCE AND ENGINEERING</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                data-bs-target="#navbarToggleExternalContent" aria-controls="navbarToggleExternalContent"
+                aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+        </div>
+    </nav>
+
+<div class="blur_card">
+    <div class="midbody blur_card">
+        <div class="textbox">
+            <div class="container1">
+                SMSE TOOLKIT
+            </div>
+
+            <div class="container2">
+                Material Class and Properties Prediction
+            </div>
+            
+        </div>
+
+        <div class="buttongroup">
+            <a href="{% url 'Property_Prediction' %}">
+                <button type="button" class="btn btn-outline-light">Property Prediction</button>
+            </a>
+            --
+
+            <a href="{% url 'Micrograph_Recognition' %}">
+                <button type="button" class="btn btn-outline-light">Micrograph recognition</button>
+            </a>
+            --
+
+            <a href="{% url 'Steel_Composition' %}">
+                <button type="button" class="btn btn-outline-light">Steel Compositions</button>
+            </a>
+            --
+
+            <a href="{% url 'Citation_Generator' %}">
+                <button type="button" class="btn btn-outline-light">Citation Generator</button>
+            </a>
+
+        </div>
+            <hr>
+        <div>
+            <a href="{% url 'Database_Lookup' %}">
+            <button type="button" class="btn btn-light"><h4>Database Look-up</h4></button>
+            </a>
+        --
+            <a href="{% url 'Database_Lookup_Semiconductor' %}">
+            <button type="button" class="btn btn-primary"><h4>Semiconductors</h4></button>
+            </a>
+        </div>
+        <br>
+        <div>
+        <form action="{% url 'Database_Lookup_Semiconductor_Result' %}" method="post">
+            <label for="Elements"> Enter the Elements : </label>
+            <br>
+            <input type="text" name="Elements" id="Elements" placeholder="Space Separated">
+            <br>
+            <label for="Energy_Limits"> Enter the Energy Band Gap Limits : </label>
+            <br>
+            <input type="text" name="Valence_Band" id="Valence_Band" placeholder="Min">
+            <input type="text" name="Conduction_Band" id="Conduction_Band" placeholder="Max">
+            <br><br>
+            <button type="submit" >Search</button>
+        </form>
+    </div>
+       
+    </div>
+        <!-- <rssapp-wall id="5qYYN8C4meVbBAAs"></rssapp-wall><script src="https://widget.rss.app/v1/wall.js" type="text/javascript" async></script> -->
+        
+        <div class="footer">
+            <p>© 2022 - All Rights Reserved</p>
+        </div>
+</body>
+
+</html>

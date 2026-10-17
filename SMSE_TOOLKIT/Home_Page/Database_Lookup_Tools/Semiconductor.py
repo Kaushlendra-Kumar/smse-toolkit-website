@@ -1,0 +1,13 @@
+from mp_api.client import MPRester
+
+with MPRester("YOUR_MP_API_KEY") as mpr:
+    #do stuff with mpr...
+    # print(mpr.summary.available_fields)
+    a = list(input("Enter the elements: ").split())
+    b = list(map(float, input("Enter the band gap: ").split()))
+    docs = mpr.summary.search(elements=a, band_gap=b, fields=["material_id", "formula_pretty", "band_gap"])
+    for i in docs:
+        print("Formula :", i.formula_pretty)
+        print("Band Gap :", i.band_gap)
+        print("~"*100)
+        # print(i.material_id, i.formula_pretty, i.band_gap)
