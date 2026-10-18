@@ -1,0 +1,4 @@
+The .csl style files in this folder come from the Citation Style Language styles
+repository (https://github.com/citation-style-language/styles) and are licensed
+under the Creative Commons Attribution-ShareAlike 3.0 Unported license
+(https://creativecommons.org/licenses/by-sa/3.0/).

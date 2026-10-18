@@ -1,5 +1,6 @@
 # Python
 .venv/
+.cache/
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -16,6 +17,8 @@ out/
 
 # Data & model artifacts (large; reproduced by training scripts)
 backend/data/micrographs/
+backend/data/*.log
+backend/models/micrograph_meta.json
 backend/models/*.pt
 backend/models/*.onnx
 backend/models/*.joblib

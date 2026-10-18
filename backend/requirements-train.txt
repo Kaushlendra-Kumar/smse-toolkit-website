@@ -1,0 +1,8 @@
+# Extra dependencies for training the micrograph CNN (not needed to serve the API).
+# Install with the CUDA wheel index, e.g.:
+#   pip install -r requirements-train.txt --index-url https://download.pytorch.org/whl/cu126 --extra-index-url https://pypi.org/simple
+torch==2.14.1
+torchvision
+timm==1.0.30
+onnx
+onnxscript

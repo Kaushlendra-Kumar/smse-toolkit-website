@@ -9,6 +9,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
 
 from app.config import get_settings
+from app.imaging import strip_info_bar
 
 router = APIRouter(prefix="/api/micrograph", tags=["micrograph"])
 
@@ -36,8 +37,8 @@ def _load():
 
 
 def preprocess(img: Image.Image, size: int, mean: list[float], std: list[float]) -> np.ndarray:
-    """Match the validation transform: resize short side, center crop, normalize."""
-    img = img.convert("RGB")
+    """Match the validation transform: strip SEM data panel, resize short side, center crop, normalize."""
+    img = strip_info_bar(img.convert("RGB"))
     w, h = img.size
     scale = size / min(w, h)
     img = img.resize((max(size, round(w * scale)), max(size, round(h * scale))), Image.BICUBIC)

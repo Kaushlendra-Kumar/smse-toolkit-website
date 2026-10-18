@@ -64,5 +64,23 @@ def test_clean_csl_drops_empty_editors():
     assert clean_csl(raw) == {"title": "T", "author": [{"family": "Jain", "given": "A"}]}
 
 
+def test_strip_info_bar():
+    import numpy as np
+    from PIL import Image
+
+    from app.imaging import strip_info_bar
+
+    rng = np.random.default_rng(0)
+    a = rng.integers(40, 160, size=(300, 400), dtype=np.uint8)  # textured "micrograph"
+    a[250:290] = 245  # bright data panel
+    a[290:] = 70  # dark strip below it
+    out = strip_info_bar(Image.fromarray(a))
+    assert 240 <= out.height <= 250 and out.width == 400
+    # No panel: unchanged unless a fallback is requested
+    plain = Image.fromarray(rng.integers(40, 160, size=(300, 400), dtype=np.uint8))
+    assert strip_info_bar(plain).size == (400, 300)
+    assert strip_info_bar(plain, fallback=0.8).height == 238
+
+
 def test_materials_rejects_bad_preset(client):
     assert client.get("/api/materials/search", params={"preset": "nope"}).status_code == 422

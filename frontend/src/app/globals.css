@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f0f2f5;
+  --fg: #0f172a;
+  --muted: #5b6475;
+  --line: #e2e6ec;
+  --accent: #0e7490;
+  --accent-fg: #ffffff;
+  --accent-soft: #e0f2f6;
+  --danger: #b42318;
+  --danger-soft: #fdecea;
+  --warn: #9a6700;
+  --warn-soft: #fff6db;
+  --ok: #1a7f37;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0e14;
+    --surface: #121722;
+    --surface-2: #1a2130;
+    --fg: #e6e9ef;
+    --muted: #9aa3b2;
+    --line: #253043;
+    --accent: #22c3e0;
+    --accent-fg: #06222a;
+    --accent-soft: #0f2d36;
+    --danger: #ff8a80;
+    --danger-soft: #3a1414;
+    --warn: #f2c94c;
+    --warn-soft: #33290b;
+    --ok: #56d364;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-ok: var(--ok);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+/* Subtle hexagonal lattice motif (nod to the 2023 site's hexagon background). */
+.lattice {
+  background-image: radial-gradient(circle at 1px 1px, color-mix(in oklab, var(--fg) 12%, transparent) 1px, transparent 0);
+  background-size: 22px 22px;
+}
