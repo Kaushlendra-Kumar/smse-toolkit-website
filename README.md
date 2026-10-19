@@ -88,7 +88,8 @@ The 839 MB image dataset is not in the repository; the download script fetches i
 ```powershell
 cd backend
 .venv\Scripts\python -m pip install -r requirements-train.txt --index-url https://download.pytorch.org/whl/cu126 --extra-index-url https://pypi.org/simple
-.venv\Scripts\python -m ml.micrograph.download   # ~11.5 GB fetched, stored downscaled (<1 GB)
+.venv\Scripts\python -m ml.micrograph.download --from-hf <user>/nffa-sem-micrographs   # processed copy, ~0.8 GB
+# or from the original source:  .venv\Scripts\python -m ml.micrograph.download   (~11.5 GB, stored downscaled)
 .venv\Scripts\python -m ml.micrograph.train      # writes models/micrograph.onnx + micrograph_meta.json
 ```
 

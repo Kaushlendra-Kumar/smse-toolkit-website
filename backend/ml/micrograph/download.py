@@ -3,7 +3,9 @@
 Aversa et al., "The first annotated set of scanning electron microscopy images
 for nanoscience", Scientific Data 5, 180172 (2018). doi:10.1038/sdata.2018.172
 
-Usage (from backend/):  .venv/Scripts/python -m ml.micrograph.download [Class ...]
+Usage (from backend/):
+    .venv/Scripts/python -m ml.micrograph.download [Class ...]            # original source (~11.5 GB)
+    .venv/Scripts/python -m ml.micrograph.download --from-hf USER/REPO    # processed copy (~0.8 GB, fast)
 
 Resumable: partial downloads continue where they stopped, archives are
 MD5-verified, and already-extracted classes are skipped.
@@ -167,5 +169,19 @@ def main(only: list[str]) -> None:
             print(f"✓ {class_name}: {n} images")
 
 
+def from_hf(repo_id: str) -> None:
+    """Fetch the processed dataset uploaded by ml.micrograph.upload_dataset."""
+    from huggingface_hub import snapshot_download
+
+    snapshot_download(repo_id, repo_type="dataset", local_dir=DATA, allow_patterns=["*/*.jpg", "README.md"])
+    for d in sorted(p for p in DATA.iterdir() if p.is_dir() and not p.name.startswith((".", "_"))):
+        n = len(list(d.glob("*.jpg")))
+        (d / ".complete").write_text(str(n))
+        print(f"✓ {d.name}: {n} images")
+
+
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    if sys.argv[1:2] == ["--from-hf"]:
+        from_hf(sys.argv[2])
+    else:
+        main(sys.argv[1:])
