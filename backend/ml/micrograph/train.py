@@ -124,6 +124,10 @@ def main():
     # Worker processes hang at start-up on Windows; images are small, so loading in-process is fine.
     ap.add_argument("--workers", type=int, default=0 if os.name == "nt" else 4)
     ap.add_argument("--export-only", action="store_true", help="re-export the saved checkpoint to ONNX")
+    ap.add_argument(
+        "--evaluate-only", action="store_true",
+        help="skip training: test-evaluate + export the saved best checkpoint (e.g. after an interrupted run)",
+    )
     args = ap.parse_args()
 
     if args.export_only:
@@ -154,7 +158,9 @@ def main():
     )
     dl_train, dl_val, dl_test = loader(tr_idx, t_train, True), loader(va_idx, t_val, False), loader(te_idx, t_val, False)
 
-    model = timm.create_model(args.arch, pretrained=True, num_classes=len(classes), drop_path_rate=0.1).to(device)
+    model = timm.create_model(
+        args.arch, pretrained=not args.evaluate_only, num_classes=len(classes), drop_path_rate=0.1
+    ).to(device)
     # Inverse-sqrt-frequency class weights soften the ~30x imbalance.
     weights = torch.tensor((counts.max() / counts) ** 0.5, dtype=torch.float32, device=device)
     criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=0.1)
@@ -166,7 +172,9 @@ def main():
     MODELS.mkdir(exist_ok=True)
     ckpt = MODELS / "micrograph_best.pt"
     best_f1, history = -1.0, []
-    for epoch in range(1, args.epochs + 1):
+    if args.evaluate_only:
+        history = history_from_log()
+    for epoch in range(1, 0 if args.evaluate_only else args.epochs + 1):
         model.train()
         t0, total, seen = time.time(), 0.0, 0
         for x, y in dl_train:
@@ -220,6 +228,20 @@ def main():
     }
     (MODELS / "micrograph_meta.json").write_text(json.dumps(meta, indent=2))
     export_onnx(args.arch, len(classes))
+
+
+def history_from_log(log: Path = BACKEND / "data" / "train.log") -> list[dict]:
+    """Recover per-epoch validation history from a previous run's log (for --evaluate-only)."""
+    import re
+
+    if not log.exists():
+        return []
+    pat = re.compile(r"epoch +(\d+) +loss ([\d.]+) +val acc ([\d.]+) +macro-F1 ([\d.]+)")
+    text = log.read_text(encoding="utf-8", errors="ignore")
+    return [
+        {"epoch": int(e), "train_loss": float(lo), "val_accuracy": float(a), "val_macro_f1": float(f)}
+        for e, lo, a, f in pat.findall(text)
+    ]
 
 
 def export_onnx(arch: str, num_classes: int) -> None:

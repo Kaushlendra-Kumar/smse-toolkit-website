@@ -171,8 +171,8 @@ export function MicrographClassifier() {
           {result && (
             <ul className="space-y-2">
               {result.predictions.map((p) => (
-                <li key={p.label} className="grid grid-cols-[9rem_1fr_3.5rem] items-center gap-3 text-sm">
-                  <span className="truncate">{pretty(p.label)}</span>
+                <li key={p.label} className="grid grid-cols-[minmax(0,14rem)_1fr_3.5rem] items-center gap-3 text-sm">
+                  <span className="truncate" title={pretty(p.label)}>{pretty(p.label)}</span>
                   <span className="h-2 overflow-hidden rounded-full bg-surface-2">
                     <span className="block h-full rounded-full bg-accent" style={{ width: `${p.probability * 100}%` }} />
                   </span>
