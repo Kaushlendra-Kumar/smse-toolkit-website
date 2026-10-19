@@ -9,9 +9,9 @@ the first commit of this repository.
 
 | Tool | What it does | How |
 |---|---|---|
-| **Micrograph Recognition** | Classifies SEM images into 10 nanoscience categories | EfficientNet-B0 fine-tuned on the NFFA-EUROPE SEM dataset (PyTorch), served with ONNX Runtime |
-| **Steel Property Prediction** | 0.2% proof stress, tensile strength, elongation, reduction in area from composition + temperature, with uncertainty | Extra-Trees ensembles (scikit-learn) on NIMS MatNavi data, validated on unseen alloys |
-| **Materials Explorer** | Search Materials Project by band gap, elasticity, magnetism, dielectric, piezoelectric and surface properties | Materials Project REST API |
+| **Micrograph Recognition** | Classifies SEM images into 10 nanoscience categories | EfficientNet-B0 fine-tuned on the NFFA-EUROPE SEM dataset (PyTorch); runs **in the browser** with ONNX Runtime Web |
+| **Steel Property Prediction** | 0.2% proof stress, tensile strength, elongation, reduction in area from composition + temperature, with uncertainty | Extra-Trees ensembles (scikit-learn) on NIMS MatNavi data, validated on unseen alloys; evaluated **in the browser** |
+| **Materials Explorer** | Search Materials Project by band gap, elasticity, magnetism, dielectric, piezoelectric and surface properties | Materials Project REST API via a serverless route |
 | **Periodic Table** | Element data, links into the explorer | Static data |
 | **Citation Generator** | DOI / title / manual entry → IEEE, APA, MLA, Chicago/Turabian, Harvard, Vancouver, BibTeX | Crossref + doi.org metadata, formatted with citation-js (citeproc-js) |
 
@@ -44,44 +44,40 @@ grouped by alloy (every score is on steels never seen in training):
 ## Stack
 
 ```
-frontend/   Next.js 16 · React 19 · TypeScript · Tailwind CSS 4 · Recharts · citation-js
-backend/    FastAPI · scikit-learn · ONNX Runtime · httpx
-  app/        API (routers: materials, steel, micrograph, citations)
-  ml/steel/        training script for steel models
-  ml/micrograph/   dataset download + CNN training + ONNX export
+frontend/   The website (this is what gets deployed) — Next.js 16 · React 19 · TypeScript · Tailwind 4
+  public/models/   browser models: micrograph.onnx, steel.bin/json
+  src/lib/         in-browser inference (micrograph-model.ts, steel-model.ts), citation formatting
+  src/app/api/     serverless routes: Materials Project + citation lookup
+backend/    Python: model training (+ an optional FastAPI version of the API)
+  ml/steel/        steel models: training + export to the browser format
+  ml/micrograph/   dataset download, CNN training, ONNX export
   models/     trained models (micrograph.onnx, steel.joblib, metadata)
   data/       steel CSV + micrographs/ (18,577 SEM images, CC-BY 4.0, see its README)
 docs/         thesis PDF and screenshots
-render.yaml   backend deployment (Render); frontend deploys on Vercel — see DEPLOY.md
 ```
 
 Older uploads kept at the repository root for reference — `smse-toolkit-website.zip`
 (the 2023 code) and `Dragon Real Estates.ipynb` — are not part of the build or deployment.
-Deployment (free: Vercel + Render) is described in [DEPLOY.md](DEPLOY.md).
-
-The frontend proxies `/api/*` to the backend (`next.config.ts`), so the browser only talks to one origin.
+Deployment (free, Vercel only, no card) is described in [DEPLOY.md](DEPLOY.md).
 
 ## Run it locally (Windows)
 
-Prerequisites: Python 3.10+, Node 20+, pnpm.
+Prerequisites: Node 20+ and pnpm. No Python needed to run the website.
 
 ```powershell
-# 1. Backend
-cd backend
-python -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt
-copy .env.example .env          # then put your Materials Project key in MP_API_KEY
-.venv\Scripts\python -m uvicorn app.main:app --port 8000
-
-# 2. Frontend (new terminal)
 cd frontend
 pnpm install
-pnpm dev                        # http://localhost:3000
+$env:MP_API_KEY = "your-materials-project-key"   # only needed for the Materials Explorer
+pnpm dev                                         # http://localhost:3000
 ```
 
-API docs: http://localhost:8000/docs
+Tests: `pnpm test` (browser steel model vs. scikit-learn), `pnpm lint`, `pnpm build`;
+Python tests: `cd backend; .venv\Scripts\python -m pytest`.
 
-### Retraining (optional — trained models are already in `backend/models/`)
+### Retraining (optional — trained models are already in the repo)
+
+Training scripts write both `backend/models/` and the browser copies in `frontend/public/models/`.
+Set up Python first: `cd backend; python -m venv .venv; .venv\Scripts\python -m pip install -r requirements.txt`.
 
 Steel models: `.venv\Scripts\python -m ml.steel.train` (~10 s).
 

@@ -5,60 +5,39 @@ import { ImageUp } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Badge, Button, Card, CardTitle, Notice } from "@/components/ui";
-import { apiGet, apiUpload } from "@/lib/api";
-
-type Info = {
-  classes: string[];
-  descriptions: Record<string, string>;
-  architecture: string;
-  metrics: { val_accuracy: number; val_macro_f1: number; n_train: number; n_val: number };
-  dataset: string;
-};
-type Result = { predictions: { label: string; probability: number }[]; image: { width: number; height: number } };
+import {
+  classifyMicrograph,
+  loadMicrographMeta,
+  preloadMicrographModel,
+  type MicrographMeta,
+  type MicrographResult,
+} from "@/lib/micrograph-model";
 
 const SAMPLES = ["Fibres", "Nanowires", "Particles", "Porous_Sponge", "Biological", "Tips"];
 const pretty = (label: string) => label.replaceAll("_", " ");
-const MAX_SIDE = 1024;
-
-/** Downscale large images in the browser before upload (the model only needs 224 px).
- *  Formats the browser can't decode (e.g. TIFF) are sent unchanged. */
-async function shrink(file: File): Promise<File> {
-  try {
-    const bitmap = await createImageBitmap(file);
-    const scale = MAX_SIDE / Math.max(bitmap.width, bitmap.height);
-    if (scale >= 1 && file.size < 2_000_000) return file;
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(bitmap.width * Math.min(1, scale));
-    canvas.height = Math.round(bitmap.height * Math.min(1, scale));
-    canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", 0.92));
-    return blob ? new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" }) : file;
-  } catch {
-    return file;
-  }
-}
 
 export function MicrographClassifier() {
-  const [info, setInfo] = useState<Info | null>(null);
+  const [info, setInfo] = useState<MicrographMeta | null>(null);
   const [infoError, setInfoError] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [result, setResult] = useState<Result | null>(null);
+  const [result, setResult] = useState<MicrographResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    apiGet<Info>("/micrograph/info")
+    loadMicrographMeta()
       .then(setInfo)
       .catch((e) => setInfoError(e.message));
+    preloadMicrographModel(); // fetch the ~17 MB model + runtime while the user picks an image
   }, []);
 
   useEffect(() => () => void (preview && URL.revokeObjectURL(preview)), [preview]);
 
   const classify = useCallback(async (file: File) => {
     if (!file.type.startsWith("image/")) {
-      setError("Please choose an image file (JPG, PNG or TIFF).");
+      setError("Please choose an image file (JPG or PNG).");
       return;
     }
     setPreview(URL.createObjectURL(file));
@@ -66,7 +45,7 @@ export function MicrographClassifier() {
     setError(null);
     setLoading(true);
     try {
-      setResult(await apiUpload<Result>("/micrograph/predict", await shrink(file)));
+      setResult(await classifyMicrograph(file));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -123,7 +102,7 @@ export function MicrographClassifier() {
             <div className="px-6 text-center">
               <ImageUp className="mx-auto size-10 text-muted" aria-hidden />
               <p className="mt-3 font-medium">Drop an SEM image here, click to browse, or paste</p>
-              <p className="mt-1 text-sm text-muted">JPG, PNG or TIFF · up to 15 MB</p>
+              <p className="mt-1 text-sm text-muted">JPG or PNG · analysed in your browser, never uploaded</p>
             </div>
           )}
         </div>
@@ -156,7 +135,7 @@ export function MicrographClassifier() {
 
         <Card>
           <CardTitle>Prediction</CardTitle>
-          {loading && <p className="text-muted">Analysing…</p>}
+          {loading && <p className="text-muted">Analysing… (the first run loads the model, ~17 MB)</p>}
           {!loading && !result && <p className="text-muted">Upload a micrograph to see what the model thinks it shows.</p>}
           {top && info && (
             <div className="mb-5">

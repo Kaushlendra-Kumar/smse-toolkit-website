@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "node scripts/copy-ort.mjs",
+    "test": "node --test tests/*.test.ts"
   },
   "dependencies": {
     "@citation-js/core": "^0.9.0",
@@ -15,6 +17,7 @@
     "clsx": "^2.1.1",
     "lucide-react": "^1.59.0",
     "next": "16.4.2",
+    "onnxruntime-web": "^1.30.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "recharts": "^3.10.1"

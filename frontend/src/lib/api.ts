@@ -1,4 +1,4 @@
-/** Thin client for the FastAPI backend (proxied at /api by next.config.ts). */
+/** Thin client for this site's Route Handlers under src/app/api (Materials Project, citations). */
 
 export class ApiError extends Error {
   constructor(
@@ -18,7 +18,7 @@ async function handle<T>(res: Response): Promise<T> {
     else if (Array.isArray(body.detail)) message = body.detail.map((d: { msg: string }) => d.msg).join("; ");
   } catch {
     if (res.status === 500 || res.status === 502 || res.status === 503 || res.status === 504)
-      message = "The toolkit API is not reachable. Is the backend running on port 8000?";
+      message = "The server could not complete the request. Please try again in a moment.";
   }
   throw new ApiError(message, res.status);
 }

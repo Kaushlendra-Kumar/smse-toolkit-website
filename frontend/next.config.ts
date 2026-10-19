@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
-const API_URL = process.env.API_URL ?? "http://127.0.0.1:8000";
-
+// Everything runs on one host (e.g. Vercel): ML models run in the browser, and the two
+// external-API tools (Materials Project, citations) are Route Handlers under src/app/api.
 const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
@@ -13,9 +13,12 @@ const nextConfig: NextConfig = {
       },
     },
   },
-  // Same-origin proxy to the FastAPI backend: no CORS setup needed in the browser.
-  async rewrites() {
-    return [{ source: "/api/:path*", destination: `${API_URL}/api/:path*` }];
+  async headers() {
+    // Model files and the WASM runtime are large and versioned with each deploy: cache them.
+    return [
+      { source: "/models/:file*", headers: [{ key: "Cache-Control", value: "public, max-age=86400" }] },
+      { source: "/ort/:file*", headers: [{ key: "Cache-Control", value: "public, max-age=604800" }] },
+    ];
   },
 };
 

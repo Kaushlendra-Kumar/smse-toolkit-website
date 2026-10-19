@@ -1,48 +1,50 @@
-# Deploying SMSE AI Toolkit (free)
+# Deploying SMSE AI Toolkit (free, no credit card)
+
+The whole site deploys to **Vercel** from this GitHub repository — no separate backend server:
 
 ```
-Browser ──► Vercel (Next.js frontend) ──/api/* proxy──► Render (FastAPI + models, Docker)
-                         both deploy straight from this GitHub repository
+Browser ──► Vercel
+             ├─ static pages + model files (public/models, public/ort)
+             │    • Micrograph CNN runs in the browser (ONNX Runtime Web) — images never leave the device
+             │    • Steel tree ensembles run in the browser (src/lib/steel-model.ts)
+             └─ Route Handlers (src/app/api) — serverless functions
+                  • /api/materials/*  → Materials Project (API key kept server-side)
+                  • /api/citations/*  → doi.org / Crossref
 ```
 
-Both free tiers are enough (the API container uses ~300 MB RAM; Render's free plan has 512 MB).
-Free limits change over time, so check the current terms when signing up.
-The free Render service sleeps after ~15 min idle; the next request takes ~1 min to wake it.
+Vercel's Hobby plan is free for non-commercial use and needs no card. Limits change over time,
+so check the current terms when signing up. The Python `backend/` folder is only for training
+models and local development; it is not deployed.
 
-## 0. Before you start
+## Steps
 
-- Code pushed to https://github.com/Kaushlendra-Kumar/smse-toolkit-website (`git push`).
-- A new Materials Project API key from https://next-gen.materialsproject.org/api.
-- **Revoke the old 2023 key** — it is inside `smse-toolkit-website.zip` at the repo root
-  (it has been redacted from the git history).
+1. Get a new Materials Project API key: https://next-gen.materialsproject.org/api
+   (and **revoke the old 2023 key** — it is inside `smse-toolkit-website.zip` at the repo root).
+2. Sign up at https://vercel.com with **“Continue with GitHub”**.
+3. https://vercel.com/new → **Import** `smse-toolkit-website`.
+4. **Root Directory:** `frontend` (click *Edit*). Framework preset: Next.js (auto-detected).
+5. **Environment Variables:**
+   - `MP_API_KEY` = your Materials Project key
+   - `CROSSREF_MAILTO` = your email (optional; Crossref etiquette, faster responses)
+6. **Deploy** → `https://<project>.vercel.app`. Every `git push` to `main` redeploys.
 
-## 1. Backend → Render
+The repository's other contents (the image dataset, `smse-toolkit-website.zip`,
+`Dragon Real Estates.ipynb`, `backend/`) are not part of the deployment: Vercel builds only `frontend/`.
 
-1. Sign up at https://render.com with **“GitHub”**.
-2. Dashboard → **New** → **Blueprint** → select `smse-toolkit-website`.
-   Render reads `render.yaml` and proposes the service `smse-toolkit-api` (plan: Free).
-3. When asked for `MP_API_KEY`, paste your Materials Project key → **Apply**.
-4. First build takes ~5 min. Then open `https://smse-toolkit-api.onrender.com/api/health`
-   (use the URL Render shows if the name was taken) — it should return `"status": "ok"`.
+## Updating the models
 
-Render redeploys automatically when files under `backend/` change on GitHub.
-
-## 2. Frontend → Vercel
-
-1. Sign up at https://vercel.com with **“Continue with GitHub”**.
-2. https://vercel.com/new → **Import** `smse-toolkit-website`.
-3. **Root Directory:** `frontend` (click *Edit*). Framework: Next.js (auto-detected).
-4. **Environment Variables:** `API_URL` = your Render URL, e.g. `https://smse-toolkit-api.onrender.com`
-5. **Deploy** → you get `https://<project>.vercel.app`. Every `git push` redeploys.
-
-The older files at the repo root (`smse-toolkit-website.zip`, `Dragon Real Estates.ipynb`)
-and the image dataset are not used by either deployment: Vercel builds only `frontend/`,
-and Render builds only `backend/` (its `.dockerignore` excludes `data/`).
+Retrain in `backend/` (see README). The training scripts write the browser models straight into
+`frontend/public/models/`; commit and push, and Vercel redeploys.
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---|---|
-| “The toolkit API is not reachable” | Render service asleep or building — open the health URL, wait ~1 min, retry. Check `API_URL` on Vercel (no trailing slash), then redeploy Vercel. |
-| Materials Explorer: “API key is not configured” | Render → service → *Environment* → set `MP_API_KEY` → *Save* (it redeploys). |
-| Render build out of memory / fails | Check the build log; `requirements.txt` must match `backend/models/` (scikit-learn version). |
+| Materials Explorer: “API key is not configured” | Vercel → Project → *Settings* → *Environment Variables* → add `MP_API_KEY` → *Deployments* → *Redeploy*. |
+| Micrograph page stuck on “Analysing…” the first time | The model (~17 MB) and runtime (~14 MB) load once, then the browser caches them. Slow connections take a while. |
+| “This browser can't read that image format” | Convert TIFF micrographs to PNG/JPG first (browsers can't decode TIFF). |
+
+## Optional: run the Python API instead
+
+`backend/` still contains the FastAPI version of the API and a `Dockerfile`, e.g. for a
+university server. The website itself no longer needs it.

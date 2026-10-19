@@ -3,26 +3,26 @@
     "proof_stress": {
       "label": "0.2% Proof Stress (MPa)",
       "algorithm": "Extra trees",
-      "r2": 0.932,
-      "mae": 22.01
+      "r2": 0.931,
+      "mae": 22.16
     },
     "tensile_strength": {
       "label": "Tensile Strength (MPa)",
       "algorithm": "Extra trees",
       "r2": 0.953,
-      "mae": 19.03
+      "mae": 19.05
     },
     "elongation": {
       "label": "Elongation (%)",
       "algorithm": "Extra trees",
-      "r2": 0.856,
-      "mae": 2.25
+      "r2": 0.854,
+      "mae": 2.26
     },
     "reduction_in_area": {
       "label": "Reduction in Area (%)",
       "algorithm": "Extra trees",
-      "r2": 0.807,
-      "mae": 3.39
+      "r2": 0.808,
+      "mae": 3.38
     }
   },
   "comparison": {
@@ -33,11 +33,11 @@
       },
       "Random forest": {
         "r2": 0.914,
-        "mae": 24.9
+        "mae": 24.94
       },
       "Extra trees": {
-        "r2": 0.932,
-        "mae": 22.01
+        "r2": 0.931,
+        "mae": 22.16
       },
       "Gradient boosting": {
         "r2": 0.904,
@@ -51,11 +51,11 @@
       },
       "Random forest": {
         "r2": 0.947,
-        "mae": 20.37
+        "mae": 20.42
       },
       "Extra trees": {
         "r2": 0.953,
-        "mae": 19.03
+        "mae": 19.05
       },
       "Gradient boosting": {
         "r2": 0.95,
@@ -68,12 +68,12 @@
         "mae": 4.73
       },
       "Random forest": {
-        "r2": 0.84,
-        "mae": 2.37
+        "r2": 0.838,
+        "mae": 2.39
       },
       "Extra trees": {
-        "r2": 0.856,
-        "mae": 2.25
+        "r2": 0.854,
+        "mae": 2.26
       },
       "Gradient boosting": {
         "r2": 0.847,
@@ -87,11 +87,11 @@
       },
       "Random forest": {
         "r2": 0.778,
-        "mae": 3.72
+        "mae": 3.71
       },
       "Extra trees": {
-        "r2": 0.807,
-        "mae": 3.39
+        "r2": 0.808,
+        "mae": 3.38
       },
       "Gradient boosting": {
         "r2": 0.765,

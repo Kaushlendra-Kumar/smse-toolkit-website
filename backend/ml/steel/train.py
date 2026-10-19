@@ -21,6 +21,8 @@ from sklearn.model_selection import GroupKFold
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
+from ml.steel.export_web import export_web
+
 BACKEND = Path(__file__).resolve().parents[2]
 DATA = BACKEND / "data" / "raw" / "low_alloy_steels.csv"
 OUT = BACKEND / "models" / "steel.joblib"
@@ -47,8 +49,9 @@ def load() -> pd.DataFrame:
 def candidates() -> dict:
     return {
         "Linear regression (2023 baseline)": make_pipeline(StandardScaler(), LinearRegression()),
-        "Random forest": RandomForestRegressor(n_estimators=200, min_samples_leaf=2, random_state=0, n_jobs=-1),
-        "Extra trees": ExtraTreesRegressor(n_estimators=200, min_samples_leaf=2, random_state=0, n_jobs=-1),
+        # 100 trees: same accuracy as 200, half the size of the in-browser model.
+        "Random forest": RandomForestRegressor(n_estimators=100, min_samples_leaf=2, random_state=0, n_jobs=-1),
+        "Extra trees": ExtraTreesRegressor(n_estimators=100, min_samples_leaf=2, random_state=0, n_jobs=-1),
         "Gradient boosting": HistGradientBoostingRegressor(max_iter=400, learning_rate=0.05, min_samples_leaf=10, random_state=0),
     }
 
@@ -90,6 +93,7 @@ def main() -> None:
     metrics = {k: {kk: vv for kk, vv in v.items() if kk != "model"} for k, v in bundle["targets"].items()}
     (OUT.parent / "steel_metrics.json").write_text(json.dumps({"best": metrics, "comparison": bundle["comparison"]}, indent=2))
     print(f"\nSaved {OUT}")
+    export_web(bundle)
 
 
 if __name__ == "__main__":

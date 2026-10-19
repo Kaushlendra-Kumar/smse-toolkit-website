@@ -264,6 +264,14 @@ def export_onnx(arch: str, num_classes: int) -> None:
     print(f"Saved {onnx_path} ({onnx_path.stat().st_size / 1e6:.0f} MB); max |Δlogit| vs PyTorch = {diff:.2e}")
     if diff > 1e-3:
         raise SystemExit("ONNX output diverges from PyTorch")
+    # The website runs the model in the browser: publish model + metadata to the frontend.
+    import shutil
+
+    web = BACKEND.parent / "frontend" / "public" / "models"
+    web.mkdir(parents=True, exist_ok=True)
+    for f in ("micrograph.onnx", "micrograph_meta.json"):
+        shutil.copy2(MODELS / f, web / f)
+    print(f"Copied model to {web}")
 
 
 if __name__ == "__main__":
