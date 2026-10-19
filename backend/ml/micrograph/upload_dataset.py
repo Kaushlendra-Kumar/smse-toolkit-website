@@ -4,7 +4,8 @@ Usage (from backend/):
     $env:HF_TOKEN = "hf_..."; .venv/Scripts/python -m ml.micrograph.upload_dataset [--name nffa-sem-micrographs]
 
 Uploads data/micrographs/<Class>/*.jpg (ImageFolder layout, 320 px short side) plus a
-dataset card. Resumable: re-run the same command if the upload is interrupted.
+dataset card, one commit per class. Re-run the same command if interrupted: classes
+already online are skipped.
 Retrieve later with:  python -m ml.micrograph.download --from-hf <user>/<name>
 """
 
@@ -71,10 +72,24 @@ def main() -> None:
     rows = "\n".join(f"| {c.replace('_', ' ')} | {n:,} |" for c, n in counts.items())
     (DATA / "README.md").write_text(CARD.format(n=f"{sum(counts.values()):,}", rows=rows), encoding="utf-8")
 
-    # upload_large_folder: many files, parallel, resumable.
-    api.upload_large_folder(
-        repo_id=repo_id, repo_type="dataset", folder_path=DATA,
-        allow_patterns=["README.md", *(f"{c}/*.jpg" for c in classes)],
+    # One commit per class (each ≤ ~4.2k files). Classes already complete online are skipped,
+    # so re-running after an interruption resumes instead of starting over.
+    online: dict[str, int] = {}
+    for f in api.list_repo_files(repo_id, repo_type="dataset"):
+        if f.endswith(".jpg") and "/" in f:
+            online[f.split("/")[0]] = online.get(f.split("/")[0], 0) + 1
+    for c in classes:
+        if online.get(c, 0) >= counts[c]:
+            print(f"✓ {c} already uploaded")
+            continue
+        print(f"↑ {c}: {counts[c]:,} images…", flush=True)
+        api.upload_folder(
+            repo_id=repo_id, repo_type="dataset", folder_path=DATA / c, path_in_repo=c,
+            allow_patterns=["*.jpg"], commit_message=f"Add {c} ({counts[c]} images)",
+        )
+    api.upload_file(
+        path_or_fileobj=DATA / "README.md", path_in_repo="README.md",
+        repo_id=repo_id, repo_type="dataset", commit_message="Dataset card",
     )
     print(f"\nUploaded {sum(counts.values()):,} images: https://huggingface.co/datasets/{repo_id}")
 
