@@ -15,13 +15,11 @@ out/
 .env
 .env.local
 
-# Data & model artifacts (large; reproduced by training scripts)
+# Dataset (839 MB; re-download with `python -m ml.micrograph.download`) and training scratch.
+# The trained models in backend/models/ (ONNX, joblib, meta) ARE committed so deploys need no GPU.
 backend/data/micrographs/
 backend/data/*.log
-backend/models/micrograph_meta.json
 backend/models/*.pt
-backend/models/*.onnx
-backend/models/*.joblib
 
 # OS / editor
 .DS_Store

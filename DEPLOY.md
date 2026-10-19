@@ -12,10 +12,10 @@ The Space sleeps when idle; the first request afterwards takes ~30–60 s to wak
 - Accounts: [GitHub](https://github.com), [Hugging Face](https://huggingface.co/join), [Vercel](https://vercel.com/signup) (sign up *with GitHub*).
 - A Materials Project API key in `backend/.env` (`MP_API_KEY=...`) from
   https://next-gen.materialsproject.org/api.
-- **Revoke the old 2023 key.** It is hard-coded in the first commit of this repo
-  (the archived Django code), so it is public the moment the repo is.
-- Trained models in `backend/models/`: `steel.joblib`, `micrograph.onnx`,
-  `micrograph_meta.json` (see README → training).
+- **Revoke the old 2023 key.** It was hard-coded in the 2023 scripts and is still inside
+  `smse-toolkit-website.zip` at the repo root (it has been redacted from the git history).
+- Trained models in `backend/models/` (`steel.joblib`, `micrograph.onnx`,
+  `micrograph_meta.json`) — already committed to the repository.
 
 ## 1. Backend → Hugging Face Space
 
@@ -35,19 +35,16 @@ Re-run the same command to redeploy after changes.
 
 ## 2. Code → GitHub
 
-Create an empty repository on GitHub (no README), then:
+The code lives at https://github.com/Kaushlendra-Kumar/smse-toolkit-website.
+Push changes with `git push`; Vercel redeploys automatically.
 
-```powershell
-git remote add origin https://github.com/<you>/smse-toolkit.git
-git push -u origin main
-```
-
-Public or private both work with Vercel. If public, remember the thesis PDF and the
-team's names are in the repo.
+The older files at the repo root (`smse-toolkit-website.zip`, `Dragon Real Estates.ipynb`)
+are ignored by both deployments: Vercel builds only `frontend/`, and `deploy_space.py`
+uploads only the backend app and models.
 
 ## 3. Frontend → Vercel
 
-1. https://vercel.com/new → *Import* your GitHub repository.
+1. https://vercel.com/new → *Import* `smse-toolkit-website`.
 2. **Root Directory:** `frontend` (click *Edit*). Framework preset: Next.js (auto-detected).
 3. **Environment Variables:** `API_URL` = `https://<you>-smse-toolkit-api.hf.space`
 4. *Deploy*. You get `https://<project>.vercel.app`; every `git push` redeploys.
