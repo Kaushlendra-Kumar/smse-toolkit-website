@@ -1,0 +1,20 @@
+# Render Blueprint — deploys the FastAPI backend from this repo on the free plan.
+# Render dashboard → New → Blueprint → pick this repository.
+services:
+  - type: web
+    name: smse-toolkit-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /api/health
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - backend/app/**
+        - backend/models/**
+        - backend/Dockerfile
+        - backend/requirements.txt
+    envVars:
+      - key: MP_API_KEY
+        sync: false # entered in the dashboard; never stored in the repo

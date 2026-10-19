@@ -15,9 +15,10 @@ out/
 .env
 .env.local
 
-# Dataset (839 MB; re-download with `python -m ml.micrograph.download`) and training scratch.
-# The trained models in backend/models/ (ONNX, joblib, meta) ARE committed so deploys need no GPU.
-backend/data/micrographs/
+# The processed dataset (backend/data/micrographs, ~800 MB) and trained models ARE committed.
+# Only download/training scratch is ignored.
+backend/data/micrographs/_archives/
+*.parts
 backend/data/*.log
 backend/models/*.pt
 

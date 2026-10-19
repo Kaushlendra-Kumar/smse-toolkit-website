@@ -49,12 +49,15 @@ backend/    FastAPI · scikit-learn · ONNX Runtime · httpx
   app/        API (routers: materials, steel, micrograph, citations)
   ml/steel/        training script for steel models
   ml/micrograph/   dataset download + CNN training + ONNX export
-  models/     trained models (committed: micrograph.onnx, steel.joblib, metadata)
+  models/     trained models (micrograph.onnx, steel.joblib, metadata)
+  data/       steel CSV + micrographs/ (18,577 SEM images, CC-BY 4.0, see its README)
 docs/         thesis PDF and screenshots
+render.yaml   backend deployment (Render); frontend deploys on Vercel — see DEPLOY.md
 ```
 
 Older uploads kept at the repository root for reference — `smse-toolkit-website.zip`
 (the 2023 code) and `Dragon Real Estates.ipynb` — are not part of the build or deployment.
+Deployment (free: Vercel + Render) is described in [DEPLOY.md](DEPLOY.md).
 
 The frontend proxies `/api/*` to the backend (`next.config.ts`), so the browser only talks to one origin.
 
@@ -82,15 +85,14 @@ API docs: http://localhost:8000/docs
 
 Steel models: `.venv\Scripts\python -m ml.steel.train` (~10 s).
 
-Micrograph model — needs ~2 GB disk and ideally an NVIDIA GPU (about 70 min on a GTX 1650).
-The 839 MB image dataset is not in the repository; the download script fetches it:
+Micrograph model — ideally an NVIDIA GPU (about 70 min on a GTX 1650). The processed
+dataset (18,577 images, ~800 MB) is already in `backend/data/micrographs/`:
 
 ```powershell
 cd backend
 .venv\Scripts\python -m pip install -r requirements-train.txt --index-url https://download.pytorch.org/whl/cu126 --extra-index-url https://pypi.org/simple
-.venv\Scripts\python -m ml.micrograph.download --from-hf <user>/nffa-sem-micrographs   # processed copy, ~0.8 GB
-# or from the original source:  .venv\Scripts\python -m ml.micrograph.download   (~11.5 GB, stored downscaled)
 .venv\Scripts\python -m ml.micrograph.train      # writes models/micrograph.onnx + micrograph_meta.json
+# To rebuild the dataset from the original source (~11.5 GB): .venv\Scripts\python -m ml.micrograph.download
 ```
 
 Notes on the method:
