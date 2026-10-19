@@ -18,6 +18,25 @@ type Result = { predictions: { label: string; probability: number }[]; image: { 
 
 const SAMPLES = ["Fibres", "Nanowires", "Particles", "Porous_Sponge", "Biological", "Tips"];
 const pretty = (label: string) => label.replaceAll("_", " ");
+const MAX_SIDE = 1024;
+
+/** Downscale large images in the browser before upload (the model only needs 224 px).
+ *  Formats the browser can't decode (e.g. TIFF) are sent unchanged. */
+async function shrink(file: File): Promise<File> {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = MAX_SIDE / Math.max(bitmap.width, bitmap.height);
+    if (scale >= 1 && file.size < 2_000_000) return file;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * Math.min(1, scale));
+    canvas.height = Math.round(bitmap.height * Math.min(1, scale));
+    canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", 0.92));
+    return blob ? new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" }) : file;
+  } catch {
+    return file;
+  }
+}
 
 export function MicrographClassifier() {
   const [info, setInfo] = useState<Info | null>(null);
@@ -47,7 +66,7 @@ export function MicrographClassifier() {
     setError(null);
     setLoading(true);
     try {
-      setResult(await apiUpload<Result>("/micrograph/predict", file));
+      setResult(await apiUpload<Result>("/micrograph/predict", await shrink(file)));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -93,7 +112,7 @@ export function MicrographClassifier() {
             if (f) classify(f);
           }}
           className={clsx(
-            "relative flex aspect-[4/3] cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed bg-surface transition focus-visible:outline-2 focus-visible:outline-accent",
+            "relative flex aspect-4/3 cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed bg-surface transition focus-visible:outline-2 focus-visible:outline-accent",
             dragging ? "border-accent bg-accent-soft" : "border-line hover:border-accent/60",
           )}
         >

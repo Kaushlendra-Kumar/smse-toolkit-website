@@ -9,7 +9,7 @@ the first commit of this repository.
 
 | Tool | What it does | How |
 |---|---|---|
-| **Micrograph Recognition** | Classifies SEM images into 10 nanoscience categories | ConvNeXt-Tiny fine-tuned on the NFFA-EUROPE SEM dataset (PyTorch), served with ONNX Runtime |
+| **Micrograph Recognition** | Classifies SEM images into 10 nanoscience categories | EfficientNet-B0 fine-tuned on the NFFA-EUROPE SEM dataset (PyTorch), served with ONNX Runtime |
 | **Steel Property Prediction** | 0.2% proof stress, tensile strength, elongation, reduction in area from composition + temperature, with uncertainty | Extra-Trees ensembles (scikit-learn) on NIMS MatNavi data, validated on unseen alloys |
 | **Materials Explorer** | Search Materials Project by band gap, elasticity, magnetism, dielectric, piezoelectric and surface properties | Materials Project REST API |
 | **Periodic Table** | Element data, links into the explorer | Static data |

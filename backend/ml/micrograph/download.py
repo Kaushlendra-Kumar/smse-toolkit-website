@@ -27,8 +27,10 @@ DATA = Path(__file__).resolve().parents[2] / "data" / "micrographs"
 ARCHIVES = DATA / "_archives"
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 SHORT_SIDE = 320
-CHUNK = 32 * 1024 * 1024
+CHUNK = 8 * 1024 * 1024
 WORKERS = 8
+STALL_WINDOW = 30  # seconds
+MIN_RATE = 8 * 1024  # bytes/s; below this a connection counts as stalled
 
 
 def md5(path: Path) -> str:
@@ -40,43 +42,60 @@ def md5(path: Path) -> str:
 
 
 def download(client: httpx.Client, url: str, dest: Path, size: int) -> None:
-    """Parallel ranged download. The server throttles long-lived connections to ~0.1 MB/s,
-    so the file is fetched as many short CHUNK-sized requests over WORKERS connections.
-    Finished chunk indices are recorded in <dest>.parts, so interrupted runs resume."""
+    """Parallel ranged download. The server throttles long-lived connections, so the file
+    is fetched as many short chunk-sized requests over WORKERS connections. Progress is
+    recorded in <dest>.parts ({"chunk": bytes, "done": [indices]}), so interrupted runs resume."""
     state = dest.with_name(dest.name + ".parts")
-    n_chunks = -(-size // CHUNK)
+    chunk = CHUNK
     if state.exists():
-        done = set(json.loads(state.read_text()))
+        saved = json.loads(state.read_text())
+        if isinstance(saved, list):  # older format: bare list of 32 MiB chunk indices
+            saved = {"chunk": 32 * 1024 * 1024, "done": saved}
+        chunk, done = saved["chunk"], set(saved["done"])
     else:
         # A plain partial file from an older sequential run: keep its whole chunks.
         have = dest.stat().st_size if dest.exists() else 0
         if have == size:
             return
-        done = set(range(min(have // CHUNK, n_chunks)))
+        done = set(range(have // chunk))
+    n_chunks = -(-size // chunk)
     with dest.open("r+b" if dest.exists() else "wb") as f:
         f.truncate(size)
     lock = threading.Lock()
     t0, start_done = time.time(), len(done)
 
     def fetch(i: int) -> None:
-        a, b = i * CHUNK, min(size, (i + 1) * CHUNK) - 1
-        for attempt in range(6):
+        a, b = i * chunk, min(size, (i + 1) * chunk) - 1
+        attempt = 0
+        while True:
             try:
-                r = client.get(url, headers={"Range": f"bytes={a}-{b}"})
-                if r.status_code != 206 or len(r.content) != b - a + 1:
-                    raise httpx.HTTPError(f"bad range response {r.status_code}, {len(r.content)} bytes")
+                # Stream straight to disk (each thread has its own handle) — keeps RAM use tiny.
+                with client.stream("GET", url, headers={"Range": f"bytes={a}-{b}"}) as r, dest.open("r+b") as f:
+                    if r.status_code != 206:
+                        raise httpx.HTTPError(f"bad range response {r.status_code}")
+                    f.seek(a)
+                    got, window_start, window_bytes = 0, time.time(), 0
+                    for piece in r.iter_bytes(256 * 1024):
+                        f.write(piece)
+                        got += len(piece)
+                        window_bytes += len(piece)
+                        # Only a near-dead connection is abandoned; a merely slow server is waited out.
+                        if time.time() - window_start > STALL_WINDOW:
+                            if window_bytes / STALL_WINDOW < MIN_RATE:
+                                raise httpx.HTTPError("connection stalled; retrying on a fresh one")
+                            window_start, window_bytes = time.time(), 0
+                if got != b - a + 1:
+                    raise httpx.HTTPError(f"short chunk: {got} of {b - a + 1} bytes")
                 break
             except httpx.HTTPError:
-                if attempt == 5:
+                attempt += 1
+                if attempt >= 20:
                     raise
-                time.sleep(2 * (attempt + 1))
+                time.sleep(min(60, 3 * attempt))
         with lock:
-            with dest.open("r+b") as f:
-                f.seek(a)
-                f.write(r.content)
             done.add(i)
-            state.write_text(json.dumps(sorted(done)))
-            rate = (len(done) - start_done) * CHUNK / 1e6 / max(time.time() - t0, 1e-6)
+            state.write_text(json.dumps({"chunk": chunk, "done": sorted(done)}))
+            rate = (len(done) - start_done) * chunk / 1e6 / max(time.time() - t0, 1e-6)
             print(f"\r  {dest.name}: {len(done)}/{n_chunks} chunks · {rate:.1f} MB/s   ", end="", flush=True)
 
     with ThreadPoolExecutor(WORKERS) as pool:
@@ -119,7 +138,8 @@ def main(only: list[str]) -> None:
     limits = httpx.Limits(max_connections=WORKERS, max_keepalive_connections=0)  # fresh connection per chunk
     with httpx.Client(timeout=httpx.Timeout(60, read=300), follow_redirects=True, limits=limits) as client:
         entries = client.get(f"{RECORD}/files").json()["entries"]
-        for e in entries:
+        # Smallest classes first, so a usable subset arrives early on a slow server.
+        for e in sorted(entries, key=lambda e: e["size"]):
             key, size = e["key"], e["size"]
             class_name = key.removesuffix(".tar")
             if only and class_name not in only:

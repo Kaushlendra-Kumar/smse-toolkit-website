@@ -102,11 +102,11 @@ def load_items():
 
 
 @torch.no_grad()
-def evaluate(model, loader, device):
+def evaluate(model, loader, device, amp=False):
     model.eval()
     preds, labels = [], []
     for x, y in loader:
-        with torch.autocast(device.type, dtype=torch.float16, enabled=device.type == "cuda"):
+        with torch.autocast(device.type, dtype=torch.float16, enabled=amp):
             preds.append(model(x.to(device, non_blocking=True)).argmax(1).cpu())
         labels.append(y)
     return torch.cat(labels).numpy(), torch.cat(preds).numpy()
@@ -114,10 +114,13 @@ def evaluate(model, loader, device):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--arch", default="convnext_tiny.fb_in22k_ft_in1k")
-    ap.add_argument("--epochs", type=int, default=12)
+    # EfficientNet-B0 in fp32: on GPUs without tensor cores (e.g. GTX 16xx) it trains ~13x faster
+    # than ConvNeXt-Tiny, and fp16 autocast is *slower* there. Pass --amp on RTX-class GPUs.
+    ap.add_argument("--arch", default="efficientnet_b0.ra_in1k")
+    ap.add_argument("--epochs", type=int, default=15)
     ap.add_argument("--batch", type=int, default=32)
-    ap.add_argument("--lr", type=float, default=2e-4)
+    ap.add_argument("--lr", type=float, default=5e-4)
+    ap.add_argument("--amp", action="store_true", help="fp16 mixed precision (helps only with tensor cores)")
     # Worker processes hang at start-up on Windows; images are small, so loading in-process is fine.
     ap.add_argument("--workers", type=int, default=0 if os.name == "nt" else 4)
     ap.add_argument("--export-only", action="store_true", help="re-export the saved checkpoint to ONNX")
@@ -130,7 +133,9 @@ def main():
 
     torch.manual_seed(0)
     random.seed(0)
+    torch.backends.cudnn.benchmark = True
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    use_amp = args.amp and device.type == "cuda"
     classes, items = load_items()
     labels = [y for _, y in items]
     counts = np.bincount(labels, minlength=len(classes))
@@ -156,7 +161,7 @@ def main():
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.05)
     steps = args.epochs * len(dl_train)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=args.lr, total_steps=steps, pct_start=0.1)
-    scaler = torch.amp.GradScaler(enabled=device.type == "cuda")
+    scaler = torch.amp.GradScaler(enabled=use_amp)
 
     MODELS.mkdir(exist_ok=True)
     ckpt = MODELS / "micrograph_best.pt"
@@ -166,7 +171,7 @@ def main():
         t0, total, seen = time.time(), 0.0, 0
         for x, y in dl_train:
             x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
-            with torch.autocast(device.type, dtype=torch.float16, enabled=device.type == "cuda"):
+            with torch.autocast(device.type, dtype=torch.float16, enabled=use_amp):
                 loss = criterion(model(x), y)
             optimizer.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()
@@ -177,7 +182,7 @@ def main():
             seen += len(y)
             if (seen // len(y)) % 50 == 0:
                 print(f"  epoch {epoch} · {seen}/{len(dl_train.dataset)} images · {seen / (time.time() - t0):.0f} img/s", flush=True)
-        y_true, y_pred = evaluate(model, dl_val, device)
+        y_true, y_pred = evaluate(model, dl_val, device, use_amp)
         acc, f1 = float((y_true == y_pred).mean()), float(f1_score(y_true, y_pred, average="macro"))
         history.append({"epoch": epoch, "train_loss": round(total / seen, 4), "val_accuracy": round(acc, 4), "val_macro_f1": round(f1, 4)})
         flag = ""
@@ -188,7 +193,7 @@ def main():
 
     # Final, unbiased numbers on the untouched test split.
     model.load_state_dict(torch.load(ckpt, map_location=device))
-    y_true, y_pred = evaluate(model, dl_test, device)
+    y_true, y_pred = evaluate(model, dl_test, device, use_amp)
     test_acc = float((y_true == y_pred).mean())
     test_f1 = float(f1_score(y_true, y_pred, average="macro"))
     report = classification_report(y_true, y_pred, target_names=classes, output_dict=True, zero_division=0)
