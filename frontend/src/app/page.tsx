@@ -1,6 +1,8 @@
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { Suspense } from "react";
 
+import { NewsFeed, NewsFeedSkeleton } from "@/components/news-feed";
 import { TOOLS } from "@/lib/tools";
 
 const TEAM = ["Peeyush Mishra", "Kaushlendra Kumar", "Pawe Dhananjay Manohar", "Sushil Kumar Kumhar"];
@@ -76,6 +78,18 @@ export default function Home() {
             </Link>
           ))}
         </div>
+      </section>
+
+      <section aria-labelledby="news-heading">
+        <div className="mb-5 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="news-heading" className="text-xl font-semibold tracking-tight">
+            Latest in materials science
+          </h2>
+          <span className="text-xs text-muted">Nature Materials · ScienceDaily · Phys.org — updated hourly</span>
+        </div>
+        <Suspense fallback={<NewsFeedSkeleton />}>
+          <NewsFeed />
+        </Suspense>
       </section>
 
       <section aria-labelledby="history-heading" className="grid gap-8 lg:grid-cols-[1fr_1.4fr]">

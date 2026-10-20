@@ -16,7 +16,14 @@ export type MicrographMeta = {
   metrics: { val_accuracy: number; val_macro_f1: number; n_train: number; n_val: number };
 };
 
-export type MicrographResult = { predictions: { label: string; probability: number }[] };
+export type MicrographResult = {
+  predictions: { label: string; probability: number }[];
+  /** The exact 224×224 crop the model saw (after removing the SEM data panel). */
+  input: ImageData;
+  /** Class activation map for the top class, normalised to 0–1, row-major camSize×camSize. */
+  cam: Float32Array;
+  camSize: number;
+};
 
 let loading: Promise<{ session: InferenceSession; meta: MicrographMeta; ort: typeof import("onnxruntime-web/wasm") }> | null =
   null;
@@ -69,7 +76,12 @@ function infoBarTop(px: Uint8ClampedArray, w: number, h: number): number | null 
   return r;
 }
 
-async function toTensorData(file: Blob, size: number, mean: number[], std: number[]): Promise<Float32Array> {
+async function toTensorData(
+  file: Blob,
+  size: number,
+  mean: number[],
+  std: number[],
+): Promise<{ data: Float32Array; input: ImageData }> {
   let bitmap: ImageBitmap;
   try {
     bitmap = await createImageBitmap(file);
@@ -98,28 +110,37 @@ async function toTensorData(file: Blob, size: number, mean: number[], std: numbe
   bitmap.close();
 
   // 3. Normalize into CHW float32.
-  const px = ctx.getImageData(0, 0, size, size).data;
+  const input = ctx.getImageData(0, 0, size, size);
+  const px = input.data;
   const plane = size * size;
   const data = new Float32Array(3 * plane);
   for (let i = 0; i < plane; i++) {
     for (let c = 0; c < 3; c++) data[c * plane + i] = (px[i * 4 + c] / 255 - mean[c]) / std[c];
   }
-  return data;
+  return { data, input };
 }
 
 export async function classifyMicrograph(file: Blob): Promise<MicrographResult> {
   const { session, meta, ort } = await loadModel();
   const size = meta.input_size;
-  const data = await toTensorData(file, size, meta.mean, meta.std);
-  const input = new ort.Tensor("float32", data, [1, 3, size, size]);
-  const output = await session.run({ [session.inputNames[0]]: input });
-  const logits = output[session.outputNames[0]].data as Float32Array;
+  const { data, input } = await toTensorData(file, size, meta.mean, meta.std);
+  const tensor = new ort.Tensor("float32", data, [1, 3, size, size]);
+  const output = await session.run({ [session.inputNames[0]]: tensor });
+  const logits = output.logits.data as Float32Array;
   const max = Math.max(...logits);
   const exps = Array.from(logits, (v) => Math.exp(v - max));
   const total = exps.reduce((a, b) => a + b, 0);
-  return {
-    predictions: meta.classes
-      .map((label, i) => ({ label, probability: exps[i] / total }))
-      .sort((a, b) => b.probability - a.probability),
-  };
+  const predictions = meta.classes
+    .map((label, i) => ({ label, probability: exps[i] / total }))
+    .sort((a, b) => b.probability - a.probability);
+
+  // Heatmap for the predicted class: positive evidence only, scaled to 0–1.
+  const camT = output.cam;
+  const camSize = camT.dims[3];
+  const k = meta.classes.indexOf(predictions[0].label);
+  const plane = camSize * camSize;
+  const cam = (camT.data as Float32Array).slice(k * plane, (k + 1) * plane).map((v) => Math.max(0, v));
+  const peak = Math.max(...cam) || 1;
+  for (let i = 0; i < plane; i++) cam[i] /= peak;
+  return { predictions, input, cam, camSize };
 }

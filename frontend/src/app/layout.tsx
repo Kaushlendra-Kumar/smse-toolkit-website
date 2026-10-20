@@ -15,9 +15,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000"),
   title: { default: "SMSE AI Toolkit", template: "%s · SMSE AI Toolkit" },
   description:
-    "AI tools for materials science: SEM micrograph recognition, steel property prediction, Materials Project lookup and citation generation.",
+    "AI tools for materials science: SEM micrograph recognition, steel property prediction, Materials Project lookup, phase diagrams and citation generation.",
+  openGraph: { siteName: "SMSE AI Toolkit", type: "website" },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -1,4 +1,4 @@
-import { Atom, BookMarked, Database, FlaskConical, Microscope, type LucideIcon } from "lucide-react";
+import { Atom, BookMarked, ChartScatter, Database, FlaskConical, Microscope, type LucideIcon } from "lucide-react";
 
 export type Tool = {
   href: string;
@@ -29,6 +29,13 @@ export const TOOLS: Tool[] = [
     short: "Materials",
     description: "Search 150,000+ materials in the Materials Project by band gap, elasticity, magnetism, dielectric, piezoelectric and surface properties.",
     icon: Database,
+  },
+  {
+    href: "/phase-diagram",
+    name: "Phase Diagram",
+    short: "Phases",
+    description: "Pick two elements and see which compounds are stable: the formation-energy convex hull from Materials Project data.",
+    icon: ChartScatter,
   },
   {
     href: "/periodic-table",

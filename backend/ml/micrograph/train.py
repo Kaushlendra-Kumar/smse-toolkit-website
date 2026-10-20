@@ -244,24 +244,44 @@ def history_from_log(log: Path = BACKEND / "data" / "train.log") -> list[dict]:
     ]
 
 
+class WithCAM(nn.Module):
+    """Adds a class activation map output. For a backbone ending in global average pooling +
+    one linear layer, logit_k = mean_xy(CAM_k) + b_k with CAM_k = Σ_c W[k,c]·F[c] — so the map is
+    exact, not an approximation (Zhou et al., CVPR 2016)."""
+
+    def __init__(self, model: nn.Module):
+        super().__init__()
+        self.model = model
+
+    def forward(self, x):
+        feats = self.model.forward_features(x)  # (B, C, h, w)
+        logits = self.model.forward_head(feats)
+        w = self.model.get_classifier().weight  # (K, C)
+        cam = torch.einsum("kc,bchw->bkhw", w, feats)  # (B, K, h, w)
+        return logits, cam
+
+
 def export_onnx(arch: str, num_classes: int) -> None:
-    """Export the best checkpoint to ONNX (fp32, batch 1) and verify it against PyTorch."""
+    """Export the best checkpoint to ONNX (fp32, batch 1, outputs: logits + cam) and verify it."""
     import onnxruntime as ort
 
     model = timm.create_model(arch, pretrained=False, num_classes=num_classes)
     model.load_state_dict(torch.load(MODELS / "micrograph_best.pt", map_location="cpu"))
     model.eval()
+    wrapped = WithCAM(model).eval()
     dummy = torch.randn(1, 3, SIZE, SIZE)
     onnx_path = MODELS / "micrograph.onnx"
     torch.onnx.export(
-        model, (dummy,), str(onnx_path), input_names=["image"], output_names=["logits"],
+        wrapped, (dummy,), str(onnx_path), input_names=["image"], output_names=["logits", "cam"],
         opset_version=18, dynamo=True, external_data=False,
     )
     sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
     with torch.no_grad():
-        expected = model(dummy).numpy()
-    diff = np.abs(sess.run(None, {"image": dummy.numpy()})[0] - expected).max()
-    print(f"Saved {onnx_path} ({onnx_path.stat().st_size / 1e6:.0f} MB); max |Δlogit| vs PyTorch = {diff:.2e}")
+        exp_logits, exp_cam = (t.numpy() for t in wrapped(dummy))
+        assert np.allclose(exp_logits, model(dummy).numpy(), atol=1e-4), "wrapper changed the logits"
+    got_logits, got_cam = sess.run(None, {"image": dummy.numpy()})
+    diff = max(np.abs(got_logits - exp_logits).max(), np.abs(got_cam - exp_cam).max())
+    print(f"Saved {onnx_path} ({onnx_path.stat().st_size / 1e6:.0f} MB); max |Δ| vs PyTorch = {diff:.2e}; cam {got_cam.shape}")
     if diff > 1e-3:
         raise SystemExit("ONNX output diverges from PyTorch")
     # The website runs the model in the browser: publish model + metadata to the frontend.

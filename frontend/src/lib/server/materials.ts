@@ -161,13 +161,106 @@ export function flatten(doc: Doc): Doc {
   return out;
 }
 
-export async function searchMaterials(q: URLSearchParams) {
+function apiKey(): string {
   const key = process.env.MP_API_KEY;
   if (!key)
     throw new HttpError(
       503,
       "Materials Project API key is not configured. Set MP_API_KEY in the deployment's environment variables (free key: https://next-gen.materialsproject.org/api).",
     );
+  return key;
+}
+
+async function mpSummary(params: URLSearchParams): Promise<{ data: Doc[]; total: number }> {
+  let res: Response;
+  try {
+    res = await fetch(`https://api.materialsproject.org/materials/summary/?${params}`, {
+      headers: { "x-api-key": apiKey() },
+      cache: "no-store",
+    });
+  } catch (e) {
+    throw new HttpError(502, `Could not reach Materials Project: ${(e as Error).message}`);
+  }
+  if (res.status === 401 || res.status === 403) throw new HttpError(502, "Materials Project rejected the API key. Check MP_API_KEY.");
+  if (!res.ok) throw new HttpError(502, `Materials Project error ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  const json = (await res.json()) as { data?: Doc[]; meta?: { total_doc?: number } };
+  return { data: json.data ?? [], total: json.meta?.total_doc ?? json.data?.length ?? 0 };
+}
+
+const MATERIAL_ID = /^(mp|mvc)-[a-z0-9]+$/i;
+
+/** Large or UI-irrelevant blobs dropped from the detail response. */
+const DETAIL_DROP = ["dos", "bandstructure", "xas", "grain_boundaries", "builder_meta", "origins", "task_ids", "property_name", "warnings"];
+
+export async function getMaterial(id: string) {
+  if (!MATERIAL_ID.test(id)) throw new HttpError(422, "Material ids look like 'mp-149'.");
+  const { data } = await mpSummary(new URLSearchParams({ material_ids: id, _all_fields: "true", _limit: "1" }));
+  if (!data.length) throw new HttpError(404, `${id} was not found in the Materials Project.`);
+  const doc = { ...data[0] };
+  for (const k of DETAIL_DROP) delete doc[k];
+  const structure = doc.structure;
+  delete doc.structure;
+  return { ...flatten(doc), structure };
+}
+
+/** Isostructural analogues: same anonymous formula (e.g. AB2) and same space group. */
+export async function similarMaterials(id: string) {
+  if (!MATERIAL_ID.test(id)) throw new HttpError(422, "Material ids look like 'mp-149'.");
+  const { data } = await mpSummary(
+    new URLSearchParams({ material_ids: id, _fields: "formula_anonymous,symmetry", _limit: "1" }),
+  );
+  if (!data.length) throw new HttpError(404, `${id} was not found.`);
+  const anon = data[0].formula_anonymous as string;
+  const sg = (data[0].symmetry as Doc | undefined)?.number as number | undefined;
+  const params = new URLSearchParams({
+    formula: anon,
+    _fields: "material_id,formula_pretty,band_gap,density,energy_above_hull,is_stable",
+    _sort_fields: "energy_above_hull",
+    _limit: "13",
+  });
+  if (sg) params.set("spacegroup_number", String(sg));
+  const res = await mpSummary(params);
+  return {
+    formula_anonymous: anon,
+    spacegroup_number: sg ?? null,
+    total: Math.max(0, res.total - 1),
+    results: res.data.filter((d) => d.material_id !== id).slice(0, 12),
+  };
+}
+
+/** Entries of a binary chemical system A–B for a formation-energy convex hull. */
+export async function phaseEntries(raw: string | null) {
+  const els = [...new Set(splitElements(raw))];
+  if (els.length !== 2) throw new HttpError(422, "Choose exactly two different elements, e.g. Fe and O.");
+  const [a, b] = els;
+  const sorted = [...els].sort().join("-");
+  const { data, total } = await mpSummary(
+    new URLSearchParams({
+      chemsys: `${sorted},${a},${b}`,
+      _fields: "material_id,formula_pretty,composition_reduced,formation_energy_per_atom,energy_above_hull,is_stable,symmetry",
+      _limit: "1000",
+    }),
+  );
+  const entries = data.flatMap((d) => {
+    const comp = (d.composition_reduced ?? {}) as Record<string, number>;
+    const na = comp[a] ?? 0;
+    const nb = comp[b] ?? 0;
+    if (na + nb === 0 || typeof d.formation_energy_per_atom !== "number") return [];
+    return [{
+      material_id: d.material_id as string,
+      formula: d.formula_pretty as string,
+      x: nb / (na + nb), // atomic fraction of element B
+      formation_energy: d.formation_energy_per_atom as number,
+      e_above_hull: (d.energy_above_hull as number | null) ?? null,
+      is_stable: Boolean(d.is_stable),
+      spacegroup: ((d.symmetry as Doc | undefined)?.symbol as string | undefined) ?? null,
+    }];
+  });
+  return { elements: [a, b], total, entries };
+}
+
+export async function searchMaterials(q: URLSearchParams) {
+  apiKey();
   const preset = q.get("preset") ?? "overview";
   const cfg = PRESETS[preset];
   if (!cfg) throw new HttpError(422, `Unknown preset '${preset}'. Choose one of: ${Object.keys(PRESETS).join(", ")}`);
@@ -209,17 +302,6 @@ export async function searchMaterials(q: URLSearchParams) {
     params.set("_sort_fields", sort);
   }
 
-  let res: Response;
-  try {
-    res = await fetch(`https://api.materialsproject.org/materials/summary/?${params}`, {
-      headers: { "x-api-key": key },
-      cache: "no-store",
-    });
-  } catch (e) {
-    throw new HttpError(502, `Could not reach Materials Project: ${(e as Error).message}`);
-  }
-  if (res.status === 401 || res.status === 403) throw new HttpError(502, "Materials Project rejected the API key. Check MP_API_KEY.");
-  if (!res.ok) throw new HttpError(502, `Materials Project error ${res.status}: ${(await res.text()).slice(0, 300)}`);
-  const data = (await res.json()) as { data?: Doc[]; meta?: { total_doc?: number } };
-  return { total: data.meta?.total_doc ?? data.data?.length ?? 0, results: (data.data ?? []).map(flatten) };
+  const { data, total } = await mpSummary(params);
+  return { total, results: data.map(flatten) };
 }

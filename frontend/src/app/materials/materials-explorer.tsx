@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronLeft, ChevronRight, ExternalLink, Search } from "lucide-react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
@@ -203,18 +204,25 @@ export function MaterialsExplorer() {
               <tbody className="divide-y divide-line">
                 {data.results.map((r) => (
                   <tr key={r.material_id} className="hover:bg-surface-2">
-                    <td className="px-5 py-2">
+                    <td className="px-5 py-2 whitespace-nowrap">
+                      <Link href={`/materials/${r.material_id}`} className="font-mono text-accent hover:underline">
+                        {r.material_id}
+                      </Link>
                       <a
                         href={`https://next-gen.materialsproject.org/materials/${r.material_id}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1 font-mono text-accent hover:underline"
+                        aria-label={`${r.material_id} on Materials Project`}
+                        className="ml-1.5 inline-block text-muted hover:text-accent"
                       >
-                        {r.material_id}
                         <ExternalLink className="size-3" aria-hidden />
                       </a>
                     </td>
-                    <td className="px-3 py-2 font-medium">{r.formula_pretty}</td>
+                    <td className="px-3 py-2 font-medium">
+                      <Link href={`/materials/${r.material_id}`} className="hover:text-accent">
+                        {r.formula_pretty}
+                      </Link>
+                    </td>
                     {columns.map((c) => (
                       <td key={c} className="px-3 py-2 font-mono tabular-nums">
                         {fmt(r[c])}
