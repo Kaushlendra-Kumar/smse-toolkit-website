@@ -28,10 +28,20 @@ the first commit of this repository.
 ## Results
 
 **Micrograph recognition** — EfficientNet-B0, 10 classes, 18,577 SEM images (80/10/10
-stratified split). On the 1,858 held-out test images: **95.7 % accuracy, macro-F1 0.924**.
-Per-class F1 is 0.94–0.98 except the two smallest classes, Fibres (0.82) and
-Porous sponge (0.83), which have only 153 and 171 images in the whole dataset.
-The 2023 model reached 92–94 % on 4 classes.
+stratified split), 30 epochs with flips, 90° rotations, blur and random erasing; the
+microscope data panel is cropped so the network never reads magnification text.
+On the 1,858 held-out test images with 8-view test-time augmentation: **96.6 % accuracy,
+macro-F1 0.950** (v1: 0.931). The smallest classes improved most — Fibres F1 0.84 → 0.89,
+Porous sponge 0.80 → 0.94. The 2023 model reached 92–94 % on 4 classes.
+
+**"Not recognised" detection** — max-softmax + k-nearest-neighbour feature distance
+(threshold accepts 94 % of test micrographs). Flags 81 % of ordinary photos (CIFAR-10,
+AUROC 0.96) but only 40 % of texture images (DTD, AUROC 0.80): textures can look like
+microstructures, so the check is a warning, not a guarantee.
+
+**Image analysis** — on synthetic microstructures with known ground truth: porosity
+mean error 0.11 percentage points; grain size mean error 1.0 % (planimetric) and 1.5 %
+(lineal intercept).
 
 **Steel properties** — 913 tensile tests of 95 low-alloy steels; 5-fold cross-validation
 grouped by alloy (every score is on steels never seen in training):

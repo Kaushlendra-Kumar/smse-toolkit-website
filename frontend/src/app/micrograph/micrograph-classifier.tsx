@@ -2,7 +2,7 @@
 
 import clsx from "clsx";
 import { Download, ImageUp } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { Badge, Button, Card, CardTitle, Notice } from "@/components/ui";
 import {
@@ -13,22 +13,34 @@ import {
   type MicrographResult,
 } from "@/lib/micrograph-model";
 
+import {
+  customClassesSnapshot,
+  isRecognised,
+  loadDetector,
+  type OodConfig,
+  matchCustom,
+  parseCustomClasses,
+  subscribeCustomClasses,
+} from "@/lib/micrograph-ood";
+
 import { CamView } from "./cam-view";
+import { CustomClasses } from "./custom-classes";
 
 const SAMPLES = ["Fibres", "Nanowires", "Particles", "Porous_Sponge", "Biological", "Tips"];
 const pretty = (label: string) => label.replaceAll("_", " ");
 const MAX_BATCH = 200;
 
-type BatchRow = { name: string; top?: string; prob?: number; second?: string; secondProb?: number; error?: string };
+type BatchRow = { name: string; top?: string; prob?: number; second?: string; secondProb?: number; recognised?: boolean; custom?: string; error?: string };
+type Verdict = { recognised: boolean | null; custom: { name: string; similarity: number } | null };
 
 function toCsv(rows: BatchRow[]) {
   const esc = (v: string | number | undefined) => {
     const s = v === undefined ? "" : String(v);
     return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
   };
-  const header = ["file", "predicted_class", "confidence", "second_class", "second_confidence", "error"];
+  const header = ["file", "predicted_class", "confidence", "second_class", "second_confidence", "recognised", "custom_class", "error"];
   const lines = rows.map((r) =>
-    [r.name, r.top && pretty(r.top), r.prob?.toFixed(4), r.second && pretty(r.second), r.secondProb?.toFixed(4), r.error].map(esc).join(","),
+    [r.name, r.top && pretty(r.top), r.prob?.toFixed(4), r.second && pretty(r.second), r.secondProb?.toFixed(4), r.recognised === undefined ? "" : String(r.recognised), r.custom, r.error].map(esc).join(","),
   );
   return [header.join(","), ...lines].join("\n");
 }
@@ -50,6 +62,10 @@ export function MicrographClassifier() {
   const [dragging, setDragging] = useState(false);
   const [batch, setBatch] = useState<BatchRow[] | null>(null);
   const [batchTotal, setBatchTotal] = useState(0);
+  const [verdict, setVerdict] = useState<Verdict | null>(null);
+  const [ood, setOod] = useState<OodConfig | null>(null);
+  const rawCustom = useSyncExternalStore(subscribeCustomClasses, customClassesSnapshot, () => "[]");
+  const customClasses = useMemo(() => parseCustomClasses(rawCustom), [rawCustom]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -57,9 +73,21 @@ export function MicrographClassifier() {
       .then(setInfo)
       .catch((e) => setInfoError(e.message));
     preloadMicrographModel(); // fetch the ~17 MB model + runtime while the user picks an image
+    loadDetector().then((d) => d && setOod(d.config));
   }, []);
 
   useEffect(() => () => void (preview && URL.revokeObjectURL(preview)), [preview]);
+
+  /** "Not recognised" check + best custom-class match for one result. */
+  const judge = useCallback(
+    async (r: MicrographResult): Promise<Verdict> => {
+      const probs = r.predictions.slice().sort((a, b) => (info?.classes.indexOf(a.label) ?? 0) - (info?.classes.indexOf(b.label) ?? 0)).map((p) => p.probability);
+      const ood = await isRecognised(probs, r.embedding);
+      const custom = await matchCustom(r.embedding, customClasses.filter((c) => c.examples.length >= 3));
+      return { recognised: ood ? ood.recognised : null, custom: custom ? { name: custom.name, similarity: custom.similarity } : null };
+    },
+    [customClasses, info],
+  );
 
   const classify = useCallback(async (file: File) => {
     if (!file.type.startsWith("image/")) {
@@ -69,16 +97,19 @@ export function MicrographClassifier() {
     setBatch(null);
     setPreview(URL.createObjectURL(file));
     setResult(null);
+    setVerdict(null);
     setError(null);
     setLoading(true);
     try {
-      setResult(await classifyMicrograph(file));
+      const r = await classifyMicrograph(file);
+      setResult(r);
+      setVerdict(await judge(r));
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [judge]);
 
   const classifyBatch = useCallback(async (files: File[]) => {
     const images = files.filter((f) => f.type.startsWith("image/")).slice(0, MAX_BATCH);
@@ -93,14 +124,15 @@ export function MicrographClassifier() {
       try {
         const r = await classifyMicrograph(f);
         const [a, b] = r.predictions;
-        row = { name: f.name, top: a.label, prob: a.probability, second: b.label, secondProb: b.probability };
+        const v = await judge(r);
+        row = { name: f.name, top: a.label, prob: a.probability, second: b.label, secondProb: b.probability, recognised: v.recognised ?? undefined, custom: v.custom?.name };
       } catch (e) {
         row = { name: f.name, error: (e as Error).message };
       }
       setBatch((rows) => [...(rows ?? []), row]);
     }
     setLoading(false);
-  }, []);
+  }, [judge]);
 
   const handleFiles = useCallback(
     (list: FileList | File[] | null | undefined) => {
@@ -206,6 +238,18 @@ export function MicrographClassifier() {
                     {top.probability < 0.5 && " — low confidence; the image may not match any trained category well."}
                   </p>
                   <p className="mt-2 text-sm">{info.descriptions[top.label]}</p>
+                  {verdict?.custom && (
+                    <p className="mt-3 rounded-lg bg-accent-soft px-3 py-2 text-sm text-accent">
+                      Closest match among <strong>your lab&apos;s classes</strong>: <strong>{verdict.custom.name}</strong> (feature similarity {verdict.custom.similarity.toFixed(2)}).
+                    </p>
+                  )}
+                  {verdict && verdict.recognised === false && !verdict.custom && (
+                    <div className="mt-3">
+                      <Notice tone="warn">
+                        <strong>Not recognised.</strong> This image doesn&apos;t look like the SEM micrographs the model was trained on, so the class above is unreliable. It may be a different kind of image or a structure outside the 10 categories — add it as one of your lab&apos;s classes below.
+                      </Notice>
+                    </div>
+                  )}
                 </div>
               )}
               {result && (
@@ -251,7 +295,7 @@ export function MicrographClassifier() {
                         <td className="max-w-48 truncate px-5 py-1.5" title={r.name}>
                           {r.name}
                         </td>
-                        <td className="px-3 py-1.5">{r.error ? <span className="text-danger">{r.error}</span> : pretty(r.top!)}</td>
+                        <td className="px-3 py-1.5">{r.error ? <span className="text-danger">{r.error}</span> : r.custom ? <span className="text-accent">{r.custom} (yours)</span> : r.recognised === false ? <span className="text-warn">not recognised ({pretty(r.top!)}?)</span> : pretty(r.top!)}</td>
                         <td className={clsx("px-3 py-1.5 text-right font-mono tabular-nums", (r.prob ?? 1) < 0.5 && "text-warn")}>
                           {r.prob !== undefined ? `${(r.prob * 100).toFixed(1)}%` : ""}
                         </td>
@@ -293,10 +337,29 @@ export function MicrographClassifier() {
               </dd>
               <dt className="text-muted">Dataset</dt>
               <dd>{info.dataset}</dd>
+              <dt className="text-muted">Inference</dt>
+              <dd>8 rotations/flips averaged (test-time augmentation), in your browser</dd>
+              {ood && (() => {
+                const ev = ood.evaluation[ood.method] as unknown as Record<string, { ood_wrongly_accepted: number }> & { test_id_accepted: number };
+                const photos = ev["CIFAR-10 photos"];
+                const textures = ev["DTD textures"];
+                return (
+                  <>
+                    <dt className="text-muted">“Not recognised”</dt>
+                    <dd>
+                      Accepts {(ev.test_id_accepted * 100).toFixed(0)}% of test micrographs; flags{" "}
+                      {photos ? `${((1 - photos.ood_wrongly_accepted) * 100).toFixed(0)}% of ordinary photos` : ""}
+                      {textures ? ` and ${((1 - textures.ood_wrongly_accepted) * 100).toFixed(0)}% of texture images (textures often resemble microstructures)` : ""}.
+                    </dd>
+                  </>
+                );
+              })()}
             </dl>
           </Card>
         )}
       </div>
+
+      <CustomClasses classes={customClasses} onChange={() => {}} />
     </div>
   );
 }

@@ -1,0 +1,62 @@
+{
+  "max softmax": {
+    "threshold": 0.6314958333969116,
+    "test_id_accepted": 0.9321851453175457,
+    "CIFAR-10 photos": {
+      "auroc": 0.9329113742375313,
+      "ood_wrongly_accepted": 0.22466666666666665
+    },
+    "DTD textures": {
+      "auroc": 0.789330104054539,
+      "ood_wrongly_accepted": 0.5506666666666666
+    }
+  },
+  "prototype cosine": {
+    "threshold": 0.8562824726104736,
+    "test_id_accepted": 0.9494079655543596,
+    "CIFAR-10 photos": {
+      "auroc": 0.9396594904915678,
+      "ood_wrongly_accepted": 0.39866666666666667
+    },
+    "DTD textures": {
+      "auroc": 0.7008161105130964,
+      "ood_wrongly_accepted": 0.8026666666666666
+    }
+  },
+  "Mahalanobis": {
+    "threshold": -477.56367746135754,
+    "test_id_accepted": 0.9467168998923574,
+    "CIFAR-10 photos": {
+      "auroc": 0.9399802655184786,
+      "ood_wrongly_accepted": 0.4106666666666667
+    },
+    "DTD textures": {
+      "auroc": 0.7736193039110154,
+      "ood_wrongly_accepted": 0.718
+    }
+  },
+  "kNN": {
+    "threshold": 0.512915313243866,
+    "test_id_accepted": 0.9418729817007535,
+    "CIFAR-10 photos": {
+      "auroc": 0.9618998923573735,
+      "ood_wrongly_accepted": 0.22133333333333333
+    },
+    "DTD textures": {
+      "auroc": 0.7682007534983853,
+      "ood_wrongly_accepted": 0.7246666666666667
+    }
+  },
+  "softmax + kNN": {
+    "threshold": -4.24229621887207,
+    "test_id_accepted": 0.9407965554359526,
+    "CIFAR-10 photos": {
+      "auroc": 0.962767491926803,
+      "ood_wrongly_accepted": 0.19066666666666668
+    },
+    "DTD textures": {
+      "auroc": 0.7996576964477935,
+      "ood_wrongly_accepted": 0.596
+    }
+  }
+}

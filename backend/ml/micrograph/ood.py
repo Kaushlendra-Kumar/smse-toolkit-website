@@ -35,6 +35,8 @@ from ml.micrograph.train import MODELS, SIZE, WithCAM, dihedral, load_items, tra
 OOD = BACKEND / "data" / "ood"
 WEB = BACKEND.parent / "frontend" / "public" / "models"
 PCA_DIM = 128
+KNN_BANK = 2000
+KNN_K = 10
 TPR = 0.95
 
 
@@ -48,16 +50,23 @@ def ood_images() -> dict[str, list[Image.Image]]:
         idx = np.random.default_rng(0).choice(len(arr), 1500, replace=False)
         sets["CIFAR-10 photos"] = [Image.fromarray(arr[i]) for i in idx]
     dtd = OOD / "dtd.tar.gz"
-    if dtd.exists():
-        imgs = []
+    dtd_dir = OOD / "dtd_sample"
+    if dtd.exists() and not (dtd_dir / ".done").exists():
+        # Extract a fixed random sample once, in archive order (gzip has no random access:
+        # reading members out of order re-decompresses the archive every time).
         with tarfile.open(dtd) as t:
-            members = [m for m in t.getmembers() if m.name.endswith(".jpg") and "/images/" in m.name]
-            random.Random(0).shuffle(members)
-            for m in members[:1500]:
-                img = Image.open(t.extractfile(m)).convert("RGB")
-                img.thumbnail((640, 640))  # like the downscaled micrographs
-                imgs.append(img.copy())
-        sets["DTD textures"] = imgs
+            names = [m.name for m in t.getmembers() if m.name.endswith(".jpg") and "/images/" in m.name]
+        wanted = set(random.Random(0).sample(names, min(1500, len(names))))
+        dtd_dir.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(dtd, mode="r|gz") as t:  # streaming, single pass
+            for m in t:
+                if m.name in wanted:
+                    img = Image.open(t.extractfile(m)).convert("RGB")
+                    img.thumbnail((640, 640))  # like the downscaled micrographs
+                    img.save(dtd_dir / Path(m.name).name, quality=92)
+        (dtd_dir / ".done").write_text("ok")
+    if (dtd_dir / ".done").exists():
+        sets["DTD textures"] = sorted(dtd_dir.glob("*.jpg"))
     return sets
 
 
@@ -66,8 +75,15 @@ def embed(model, images, device, batch=64):
     """TTA-averaged softmax and embedding — exactly what the browser computes."""
     _, val_tf = transforms()
     probs, embs = [], []
+
+    def as_image(item):
+        if isinstance(item, Path):  # open lazily — thousands of open handles exceed OS limits
+            with Image.open(item) as im:
+                return im.convert("RGB")
+        return item.convert("RGB")
+
     for i in range(0, len(images), batch):
-        x = torch.stack([val_tf(strip_info_bar(im.convert("RGB"))) for im in images[i : i + batch]]).to(device)
+        x = torch.stack([val_tf(strip_info_bar(as_image(im))) for im in images[i : i + batch]]).to(device)
         p_acc, e_acc = 0, 0
         for v in dihedral(x):
             logits, _, e = model(v)
@@ -97,12 +113,22 @@ def main():
     idx = np.arange(len(items))
     tr_idx, rest = train_test_split(idx, test_size=0.2, stratify=labels, random_state=0)
     va_idx, te_idx = train_test_split(rest, test_size=0.5, stratify=labels[rest], random_state=0)
-    load = lambda ix: [Image.open(items[i][0]) for i in ix]  # noqa: E731
+    load = lambda ix: [Path(items[i][0]) for i in ix]  # noqa: E731
 
-    print("Embedding train / val / test micrographs (8-view TTA)…", flush=True)
-    p_tr, e_tr = embed(model, load(tr_idx), device)
-    p_va, e_va = embed(model, load(va_idx), device)
-    p_te, e_te = embed(model, load(te_idx), device)
+    # Embeddings are cached per model checkpoint, so re-running the analysis is instant.
+    stamp = int((MODELS / "micrograph_best.pt").stat().st_mtime)
+    cache = BACKEND / ".cache" / f"ood_embeddings_{stamp}.npz"
+    if cache.exists():
+        z = np.load(cache)
+        p_tr, e_tr, p_va, e_va, p_te, e_te = (z[k] for k in ("p_tr", "e_tr", "p_va", "e_va", "p_te", "e_te"))
+        print("Loaded cached micrograph embeddings.", flush=True)
+    else:
+        print("Embedding train / val / test micrographs (8-view TTA)…", flush=True)
+        p_tr, e_tr = embed(model, load(tr_idx), device)
+        p_va, e_va = embed(model, load(va_idx), device)
+        p_te, e_te = embed(model, load(te_idx), device)
+        cache.parent.mkdir(exist_ok=True)
+        np.savez(cache, p_tr=p_tr, e_tr=e_tr, p_va=p_va, e_va=e_va, p_te=p_te, e_te=e_te)
     y_tr = labels[tr_idx]
 
     # --- Detector 2: cosine similarity to class prototypes (normalised class means)
@@ -125,10 +151,47 @@ def main():
         d = np.stack([np.einsum("ij,jk,ik->i", z - m, prec, z - m) for m in cmeans], 1)
         return -d.min(1)  # higher = more in-distribution
 
-    scorers = {"max softmax": lambda p, e: p.max(1), "prototype cosine": lambda p, e: cos(e), "Mahalanobis": lambda p, e: maha(e)}
+    # --- Detector 4: k-nearest-neighbour distance on L2-normalised features (Sun et al., ICML 2022)
+    # Browser-sized: normalised features → PCA-128 → re-normalised; bank of KNN_BANK training images.
+    n_tr = norm(e_tr)
+    nmu = n_tr.mean(0)
+    _, _, nvt = np.linalg.svd(n_tr - nmu, full_matrices=False)
+    ncomps = nvt[:PCA_DIM]
+    proj = lambda e: norm((norm(e) - nmu) @ ncomps.T)  # noqa: E731
+    bank_idx = np.random.default_rng(0).choice(len(n_tr), min(KNN_BANK, len(n_tr)), replace=False)
+    bank = proj(e_tr[bank_idx])
 
-    print("Embedding OOD sets…", flush=True)
-    ood = {name: embed(model, imgs, device) for name, imgs in ood_images().items()}
+    def knn(e):
+        sims = proj(e) @ bank.T  # cosine similarity to every bank image
+        return np.sort(sims, axis=1)[:, -KNN_K]  # k-th largest similarity: higher = more in-distribution
+
+    # --- Detector 5: max softmax + kNN, each standardised on the validation micrographs
+    def zfit(f):
+        v = f(p_va, e_va)
+        return v.mean(), v.std() + 1e-9
+    msp_mu, msp_sd = zfit(lambda p, e: p.max(1))
+    knn_mu, knn_sd = zfit(lambda p, e: knn(e))
+    combo = lambda p, e: (p.max(1) - msp_mu) / msp_sd + (knn(e) - knn_mu) / knn_sd  # noqa: E731
+
+    scorers = {
+        "max softmax": lambda p, e: p.max(1),
+        "prototype cosine": lambda p, e: cos(e),
+        "Mahalanobis": lambda p, e: maha(e),
+        "kNN": lambda p, e: knn(e),
+        "softmax + kNN": combo,
+    }
+
+    ood_cache = BACKEND / ".cache" / f"ood_sets_{stamp}.npz"
+    if ood_cache.exists():
+        z = np.load(ood_cache)
+        names = [str(n) for n in z["names"]]
+        ood = {n: (z[f"p{i}"], z[f"e{i}"]) for i, n in enumerate(names)}
+        print("Loaded cached OOD embeddings.", flush=True)
+    else:
+        print("Embedding OOD sets…", flush=True)
+        ood = {name: embed(model, imgs, device) for name, imgs in ood_images().items()}
+        arrays = {f"p{i}": v[0] for i, v in enumerate(ood.values())} | {f"e{i}": v[1] for i, v in enumerate(ood.values())}
+        np.savez(ood_cache, names=np.array(list(ood)), **arrays)
     if not ood:
         raise SystemExit("No OOD sets found in data/ood (cifar.tar.gz / dtd.tar.gz).")
 
@@ -160,12 +223,22 @@ def main():
         "embedding_dim": int(e_tr.shape[1]),
         "prototypes": np.round(protos, 6).tolist(),  # also used by custom classes in the browser
     }
+    if best in ("kNN", "softmax + kNN"):
+        # norm-mean (D) + components (P×D) + bank (B×P), float32
+        blob = np.concatenate([nmu, ncomps.ravel(), bank.ravel()]).astype("<f4")
+        (WEB / "micrograph_ood.bin").write_bytes(blob.tobytes())
+        out.update(pca_dim=PCA_DIM, knn_k=KNN_K, bank_size=int(len(bank)),
+                   zscore={"msp": [float(msp_mu), float(msp_sd)], "knn": [float(knn_mu), float(knn_sd)]})
     if best == "Mahalanobis":
         # mean (1280) + components (128×1280) + class means (K×128) + precision (128×128), float32
         blob = np.concatenate([mu, comps.ravel(), cmeans.ravel(), prec.ravel()]).astype("<f4")
         (WEB / "micrograph_ood.bin").write_bytes(blob.tobytes())
         out["pca_dim"] = PCA_DIM
     (WEB / "micrograph_ood.json").write_text(json.dumps(out), encoding="utf-8")
+    # Parity fixture for the browser implementation (frontend/tests/ood.test.ts).
+    pick = [(p_te[i], e_te[i]) for i in range(5)] + [(v[0][i], v[1][i]) for v in ood.values() for i in range(3)]
+    fixture = [{"probs": p.round(7).tolist(), "embedding": e.round(6).tolist(), "score": float(scorers[best](p[None], e[None])[0])} for p, e in pick]
+    (BACKEND.parent / "frontend" / "tests" / "ood_fixture.json").write_text(json.dumps(fixture), encoding="utf-8")
     (MODELS / "micrograph_ood_report.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
     print(f"Wrote {WEB / 'micrograph_ood.json'}")
 
