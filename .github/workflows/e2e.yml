@@ -1,9 +1,12 @@
 name: E2E (live site)
 
-# Runs the browser smoke test against production after each successful Vercel deploy,
-# weekly (catches Materials Project API changes), and on demand.
+# Runs the browser smoke test against production after CI passes on main (Vercel deploys
+# the same push in ~2 min), weekly (catches Materials Project API changes), and on demand.
 on:
-  deployment_status:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   schedule:
     - cron: "30 3 * * 1"
   workflow_dispatch:
@@ -15,8 +18,7 @@ on:
 jobs:
   smoke:
     if: >-
-      github.event_name != 'deployment_status' ||
-      (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production')
+      github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,9 +30,12 @@ jobs:
           cache: pip
           cache-dependency-path: e2e/requirements.txt
       - run: pip install -r e2e/requirements.txt && python -m playwright install --with-deps chromium
+      - name: Wait for the Vercel deploy
+        if: github.event_name == 'workflow_run'
+        run: sleep 180
       - name: Smoke test
         env:
-          BASE_URL: ${{ github.event.deployment_status.environment_url || inputs.base_url || 'https://smse-toolkit-website.vercel.app' }}
+          BASE_URL: ${{ inputs.base_url || 'https://smse-toolkit-website.vercel.app' }}
         run: python e2e/smoke.py "$BASE_URL"
       - uses: actions/upload-artifact@v4
         if: always()

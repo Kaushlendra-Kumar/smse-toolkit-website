@@ -36,7 +36,7 @@ def check(name, fn, mp=False):
         detail = fn() or ""
         results.append((True, f"PASS  {name:<32} {time.time() - t0:5.1f}s  {detail}"))
     except Exception as e:  # noqa: BLE001
-        results.append((False, f"FAIL  {name:<32} {time.time() - t0:5.1f}s  {str(e).splitlines()[0][:170]}"))
+        results.append((False, f"FAIL  {name:<32} {time.time() - t0:5.1f}s  {(str(e) or type(e).__name__).splitlines()[0][:170]}"))
 
 
 def get(path):
@@ -56,8 +56,11 @@ def api_presets():
 def api_material():
     status, h, body = get("/api/materials/mp-149")
     assert status == 200 and body.get("formula_pretty") == "Si", str(body)[:100]
-    assert "s-maxage" in (h.get("Cache-Control") or "")
-    return f"Si; X-RateLimit-Limit: {h.get('X-RateLimit-Limit') or '(CDN hit)'}"
+    # Vercel's CDN consumes s-maxage and reports its own cache status instead.
+    cdn = h.get("X-Vercel-Cache")
+    assert cdn or "s-maxage" in (h.get("Cache-Control") or ""), f"not cacheable: {h.get('Cache-Control')}"
+    assert h.get("X-RateLimit-Limit"), "no rate-limit header"
+    return f"Si; CDN cache: {cdn or 's-maxage set'}; rate limit {h['X-RateLimit-Limit']}/min"
 
 
 def api_error_not_cached():
