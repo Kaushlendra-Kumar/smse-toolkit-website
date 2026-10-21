@@ -11,7 +11,7 @@ export default function PhaseDiagramPage() {
     <>
       <PageHeader
         title="Phase Diagram"
-        description="Binary formation-energy convex hull: which compounds of two elements are thermodynamically stable, and how far the others sit above the hull. Data from the Materials Project."
+        description="Formation-energy convex hulls for two- or three-element systems: which compounds are thermodynamically stable, which phases coexist (tie-lines), and how far the others sit above the hull. Data from the Materials Project."
       />
       <PhaseDiagram />
     </>

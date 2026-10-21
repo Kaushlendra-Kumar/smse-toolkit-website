@@ -9,24 +9,29 @@ import { CartesianGrid, ReferenceLine, ResponsiveContainer, Scatter, ScatterChar
 import { Badge, Button, Card, CardTitle, Input, Label, Notice } from "@/components/ui";
 import { apiGet } from "@/lib/api";
 
+import { Ternary } from "./ternary";
+
 type Entry = {
   material_id: string;
   formula: string;
   x: number;
+  frac: number[];
   formation_energy: number;
   e_above_hull: number | null;
   is_stable: boolean;
   spacegroup: string | null;
 };
-type PhaseResponse = { elements: [string, string]; total: number; entries: Entry[] };
+type PhaseResponse = { elements: string[]; total: number; entries: Entry[] };
 
-const EXAMPLES: [string, string][] = [
+const EXAMPLES: string[][] = [
   ["Fe", "O"],
   ["Ti", "O"],
   ["Ni", "Al"],
-  ["Li", "O"],
   ["Cu", "Zn"],
-  ["Si", "C"],
+  ["Li", "Co", "O"],
+  ["Ba", "Ti", "O"],
+  ["Li", "Fe", "P"],
+  ["Al", "Ni", "Ti"],
 ];
 
 function PointTooltip({ active, payload }: { active?: boolean; payload?: { payload: Entry }[] }) {
@@ -49,16 +54,17 @@ export function PhaseDiagram() {
   const router = useRouter();
   const [a, setA] = useState("Fe");
   const [b, setB] = useState("O");
+  const [c, setC] = useState("");
   const [data, setData] = useState<PhaseResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [maxHull, setMaxHull] = useState(0.3);
 
-  const load = useCallback(async (ea: string, eb: string) => {
+  const load = useCallback(async (els: string[]) => {
     setLoading(true);
     setError(null);
     try {
-      setData(await apiGet<PhaseResponse>("/phase", { elements: `${ea},${eb}` }));
+      setData(await apiGet<PhaseResponse>("/phase", { elements: els.filter(Boolean).join(",") }));
     } catch (e) {
       setError((e as Error).message);
       setData(null);
@@ -75,8 +81,16 @@ export function PhaseDiagram() {
       .finally(() => setLoading(false));
   }, []);
 
+  const ternary = (data?.elements.length ?? 0) === 3;
+
   const { hull, others, stable } = useMemo(() => {
     if (!data) return { hull: [], others: [], stable: [] };
+    if (data.elements.length === 3) {
+      const stable = data.entries
+        .filter((e) => e.is_stable && !e.frac.some((f) => f > 0.9999))
+        .sort((p, q) => p.formation_energy - q.formation_energy);
+      return { hull: [], others: [], stable };
+    }
     // Hull vertices: lowest stable entry at each composition, left to right.
     const best = new Map<number, Entry>();
     for (const e of data.entries) {
@@ -92,10 +106,11 @@ export function PhaseDiagram() {
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    load(a, b);
+    load([a, b, c]);
   };
 
   const [ea, eb] = data?.elements ?? [a, b];
+  const systemName = (data?.elements ?? [a, b]).join("–");
   const open = (e: Entry) => router.push(`/materials/${e.material_id}`);
 
   return (
@@ -110,23 +125,30 @@ export function PhaseDiagram() {
             <Label htmlFor="el-b">Element B</Label>
             <Input id="el-b" value={b} onChange={(e) => setB(e.target.value)} required maxLength={2} />
           </div>
+          <div className="w-32">
+            <Label htmlFor="el-c" hint="ternary">
+              Element C
+            </Label>
+            <Input id="el-c" value={c} onChange={(e) => setC(e.target.value)} maxLength={2} placeholder="optional" />
+          </div>
           <Button type="submit" loading={loading}>
             Compute hull
           </Button>
           <div className="flex flex-wrap gap-1.5">
-            {EXAMPLES.map(([x, y]) => (
+            {EXAMPLES.map((els) => (
               <Button
-                key={x + y}
+                key={els.join()}
                 type="button"
                 variant="ghost"
                 className="px-2.5 py-1 text-xs"
                 onClick={() => {
-                  setA(x);
-                  setB(y);
-                  load(x, y);
+                  setA(els[0]);
+                  setB(els[1]);
+                  setC(els[2] ?? "");
+                  load(els);
                 }}
               >
-                {x}–{y}
+                {els.join("–")}
               </Button>
             ))}
           </div>
@@ -139,8 +161,11 @@ export function PhaseDiagram() {
         <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
           <Card>
             <CardTitle aside={<Badge>{data.total} entries</Badge>}>
-              {ea}–{eb} formation energy convex hull
+              {systemName} {ternary ? "ternary phase diagram" : "formation energy convex hull"}
             </CardTitle>
+            {ternary ? (
+              <Ternary elements={data.elements} entries={data.entries} maxHull={maxHull} />
+            ) : (
             <div className="h-96">
               <ResponsiveContainer width="100%" height="100%">
                 <ScatterChart margin={{ top: 10, right: 16, bottom: 24, left: 8 }}>
@@ -189,6 +214,7 @@ export function PhaseDiagram() {
                 </ScatterChart>
               </ResponsiveContainer>
             </div>
+            )}
             <div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
               <label className="flex items-center gap-2">
                 Show unstable phases up to
@@ -203,9 +229,11 @@ export function PhaseDiagram() {
                 />
                 <span className="font-mono tabular-nums">{maxHull.toFixed(2)}</span> eV/atom above hull
               </label>
-              <span className="text-xs text-muted">
-                {others.length} of {data.entries.length - hull.length} unstable entries shown
-              </span>
+              {!ternary && (
+                <span className="text-xs text-muted">
+                  {others.length} of {data.entries.length - hull.length} unstable entries shown
+                </span>
+              )}
             </div>
           </Card>
 
@@ -213,8 +241,8 @@ export function PhaseDiagram() {
             <CardTitle>Stable compounds</CardTitle>
             {stable.length === 0 ? (
               <p className="text-sm text-muted">
-                No stable compounds between {ea} and {eb} in the Materials Project — the elements don&apos;t form a
-                thermodynamically stable binary compound at 0 K (in this dataset).
+                No stable compounds in the {systemName} system in the Materials Project — at 0 K these elements don&apos;t
+                form a thermodynamically stable compound (in this dataset).
               </p>
             ) : (
               <ul className="divide-y divide-line text-sm">

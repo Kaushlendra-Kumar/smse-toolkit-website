@@ -228,35 +228,47 @@ export async function similarMaterials(id: string) {
   };
 }
 
-/** Entries of a binary chemical system A–B for a formation-energy convex hull. */
+/** All non-empty sub-systems of a set of elements, as MP chemsys strings ("Fe", "Fe-O", ...). */
+function subsystems(els: string[]): string[] {
+  const out: string[] = [];
+  for (let mask = 1; mask < 1 << els.length; mask++) {
+    out.push(els.filter((_, i) => mask & (1 << i)).sort().join("-"));
+  }
+  return out;
+}
+
+/**
+ * Entries of a binary (A–B) or ternary (A–B–C) system for a formation-energy convex hull.
+ * `frac` is the atomic fraction of each requested element, in the requested order.
+ */
 export async function phaseEntries(raw: string | null) {
   const els = [...new Set(splitElements(raw))];
-  if (els.length !== 2) throw new HttpError(422, "Choose exactly two different elements, e.g. Fe and O.");
-  const [a, b] = els;
-  const sorted = [...els].sort().join("-");
+  if (els.length < 2 || els.length > 3) throw new HttpError(422, "Choose two or three different elements, e.g. Fe O or Li Fe O.");
   const { data, total } = await mpSummary(
     new URLSearchParams({
-      chemsys: `${sorted},${a},${b}`,
+      chemsys: subsystems(els).join(","),
       _fields: "material_id,formula_pretty,composition_reduced,formation_energy_per_atom,energy_above_hull,is_stable,symmetry",
       _limit: "1000",
     }),
   );
   const entries = data.flatMap((d) => {
     const comp = (d.composition_reduced ?? {}) as Record<string, number>;
-    const na = comp[a] ?? 0;
-    const nb = comp[b] ?? 0;
-    if (na + nb === 0 || typeof d.formation_energy_per_atom !== "number") return [];
+    const counts = els.map((e) => comp[e] ?? 0);
+    const sum = counts.reduce((p, q) => p + q, 0);
+    if (sum === 0 || typeof d.formation_energy_per_atom !== "number") return [];
+    const frac = counts.map((c) => c / sum);
     return [{
       material_id: d.material_id as string,
       formula: d.formula_pretty as string,
-      x: nb / (na + nb), // atomic fraction of element B
+      frac,
+      x: frac[1], // binary: atomic fraction of element B
       formation_energy: d.formation_energy_per_atom as number,
       e_above_hull: (d.energy_above_hull as number | null) ?? null,
       is_stable: Boolean(d.is_stable),
       spacegroup: ((d.symmetry as Doc | undefined)?.symbol as string | undefined) ?? null,
     }];
   });
-  return { elements: [a, b], total, entries };
+  return { elements: els, total, entries };
 }
 
 export async function searchMaterials(q: URLSearchParams) {

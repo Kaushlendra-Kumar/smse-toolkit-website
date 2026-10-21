@@ -12,6 +12,8 @@ the first commit of this repository.
 | **Micrograph Recognition** | Classifies SEM images into 10 nanoscience categories | EfficientNet-B0 fine-tuned on the NFFA-EUROPE SEM dataset (PyTorch); runs **in the browser** with ONNX Runtime Web |
 | **Steel Property Prediction** | 0.2% proof stress, tensile strength, elongation, reduction in area from composition + temperature, with uncertainty | Extra-Trees ensembles (scikit-learn) on NIMS MatNavi data, validated on unseen alloys; evaluated **in the browser** |
 | **Materials Explorer** | Search Materials Project by band gap, elasticity, magnetism, dielectric, piezoelectric and surface properties | Materials Project REST API via a serverless route |
+| **Material pages** | Full properties, interactive 3D crystal structure, simulated powder XRD (6 X-ray sources), band structure + density of states, isostructural analogues | three.js; XRD computed in the browser (port of pymatgen's XRDCalculator, verified against it); band structures from the Materials Project open data |
+| **Phase Diagram** | Binary convex hulls and ternary phase diagrams with tie-lines | Materials Project formation energies; lower convex hull computed in the browser |
 | **Periodic Table** | Element data, links into the explorer | Static data |
 | **Citation Generator** | DOI / title / manual entry → IEEE, APA, MLA, Chicago/Turabian, Harvard, Vancouver, BibTeX | Crossref + doi.org metadata, formatted with citation-js (citeproc-js) |
 

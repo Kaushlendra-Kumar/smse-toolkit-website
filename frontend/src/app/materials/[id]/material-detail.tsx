@@ -9,6 +9,9 @@ import type { Structure } from "@/components/crystal-viewer";
 import { Badge, Card, CardTitle, Notice } from "@/components/ui";
 import { apiGet } from "@/lib/api";
 
+import { ElectronicPlot } from "./electronic-plot";
+import { XrdPlot } from "./xrd-plot";
+
 // three.js is ~600 kB: load it only on this page, in the browser.
 const CrystalViewer = dynamic(() => import("@/components/crystal-viewer").then((m) => m.CrystalViewer), {
   ssr: false,
@@ -122,6 +125,10 @@ export function MaterialDetail({ id: idPromise }: { id: Promise<string> }) {
               })}
             </div>
           </div>
+
+          {mat.structure && <XrdPlot structure={mat.structure} formula={mat.formula_pretty} />}
+
+          <ElectronicPlot id={mat.material_id} />
 
           {similar && similar.results.length > 0 && (
             <Card className="p-0">
