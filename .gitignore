@@ -18,6 +18,8 @@ out/
 # The processed dataset (backend/data/micrographs, ~800 MB) and trained models ARE committed.
 # Only download/training scratch is ignored.
 backend/data/micrographs/_archives/
+# Out-of-distribution evaluation sets (third-party benchmarks; re-download with ml.micrograph.ood)
+backend/data/ood/
 *.parts
 backend/data/*.log
 backend/models/*.pt

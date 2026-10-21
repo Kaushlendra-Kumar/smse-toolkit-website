@@ -76,6 +76,15 @@ def test_strip_info_bar():
     a[290:] = 70  # dark strip below it
     out = strip_info_bar(Image.fromarray(a))
     assert 240 <= out.height <= 250 and out.width == 400
+    # Panel with text rows and more image content below it (the case the old rule missed)
+    b = rng.integers(40, 160, size=(300, 400), dtype=np.uint8)
+    b[250:275] = 245
+    b[258:262, 20:200] = 10  # a line of panel text
+    b[280:] = rng.integers(60, 230, size=(20, 400))  # bright-ish content below the panel
+    assert 240 <= strip_info_bar(Image.fromarray(b)).height <= 250
+    # Bright specimen gradually filling the bottom (no sharp edge): not a panel
+    c = np.tile(np.linspace(80, 235, 300, dtype=np.float32)[:, None], (1, 400)).astype(np.uint8)
+    assert strip_info_bar(Image.fromarray(c)).size == (400, 300)
     # No panel: unchanged unless a fallback is requested
     plain = Image.fromarray(rng.integers(40, 160, size=(300, 400), dtype=np.uint8))
     assert strip_info_bar(plain).size == (400, 300)

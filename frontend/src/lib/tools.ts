@@ -1,4 +1,4 @@
-import { Atom, BookMarked, ChartScatter, Database, FlaskConical, Microscope, type LucideIcon } from "lucide-react";
+import { Atom, BatteryCharging, BookMarked, ChartScatter, Database, FlaskConical, Microscope, ScanSearch, type LucideIcon } from "lucide-react";
 
 export type Tool = {
   href: string;
@@ -15,6 +15,13 @@ export const TOOLS: Tool[] = [
     short: "Micrographs",
     description: "Upload an SEM image and a CNN classifies it into 10 nanoscience categories — fibres, particles, nanowires, porous sponge and more.",
     icon: Microscope,
+  },
+  {
+    href: "/image-analysis",
+    name: "Image Analysis",
+    short: "Analysis",
+    description: "Measure grain size (ASTM E112) and porosity from optical or SEM micrographs, with scale-bar calibration and size distributions.",
+    icon: ScanSearch,
   },
   {
     href: "/steel",
@@ -36,6 +43,13 @@ export const TOOLS: Tool[] = [
     short: "Phases",
     description: "Pick two elements and see which compounds are stable: the formation-energy convex hull from Materials Project data.",
     icon: ChartScatter,
+  },
+  {
+    href: "/electrodes",
+    name: "Battery Electrodes",
+    short: "Batteries",
+    description: "Find battery electrode materials (Li, Na, Mg, Zn…) by voltage, capacity, energy density and stability, with voltage profiles.",
+    icon: BatteryCharging,
   },
   {
     href: "/periodic-table",

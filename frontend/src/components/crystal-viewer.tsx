@@ -119,7 +119,8 @@ export function CrystalViewer({ structure }: { structure: Structure }) {
     const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1000);
     const dist = (radiusAll / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2))) * 1.05;
     camera.position.copy(new THREE.Vector3(0.55, 0.4, 0.75).normalize().multiplyScalar(dist));
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    // preserveDrawingBuffer: lets the PDF report take a snapshot of the current view.
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     el.appendChild(renderer.domElement);
     renderer.domElement.style.width = "100%";

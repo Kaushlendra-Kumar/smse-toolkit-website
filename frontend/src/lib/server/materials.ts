@@ -203,6 +203,97 @@ export async function getMaterial(id: string) {
   return { ...flatten(doc), structure };
 }
 
+export const ELECTRODE_IONS = ["Li", "Na", "K", "Mg", "Ca", "Zn", "Al", "Y", "Cs", "Rb"] as const;
+const ELECTRODE_RANGES = ["average_voltage", "capacity_grav", "energy_grav", "max_delta_volume", "stability_discharge"] as const;
+const ELECTRODE_SORT = new Set(["average_voltage", "capacity_grav", "capacity_vol", "energy_grav", "energy_vol", "max_delta_volume", "stability_discharge"]);
+
+/** Insertion (intercalation) electrodes — battery cathode/anode candidates. */
+export async function searchElectrodes(q: URLSearchParams) {
+  const ion = q.get("working_ion") ?? "Li";
+  if (!(ELECTRODE_IONS as readonly string[]).includes(ion)) throw new HttpError(422, `working_ion must be one of ${ELECTRODE_IONS.join(", ")}`);
+  const params = new URLSearchParams({
+    working_ion: ion,
+    _fields:
+      "battery_id,battery_formula,framework_formula,formula_charge,formula_discharge,average_voltage,capacity_grav,capacity_vol,energy_grav,energy_vol,max_delta_volume,stability_charge,stability_discharge,num_steps,id_charge,id_discharge,adj_pairs",
+    _limit: String(Math.min(100, Math.max(1, Number(q.get("limit") ?? 50) || 50))),
+    _skip: String(Math.max(0, Number(q.get("skip") ?? 0) || 0)),
+  });
+  const els = splitElements(q.get("elements"));
+  if (els.length) params.set("elements", els.join(","));
+  for (const f of ELECTRODE_RANGES)
+    for (const b of ["min", "max"]) {
+      const v = q.get(`${f}_${b}`);
+      if (v !== null && v !== "") {
+        if (!Number.isFinite(Number(v))) throw new HttpError(422, `${f}_${b} must be a number`);
+        params.set(`${f}_${b}`, String(Number(v)));
+      }
+    }
+  const sort = q.get("sort") ?? "-energy_grav";
+  if (!ELECTRODE_SORT.has(sort.replace(/^-/, ""))) throw new HttpError(422, `Cannot sort by '${sort}'`);
+  params.set("_sort_fields", sort);
+
+  let res: Response;
+  try {
+    res = await fetch(`https://api.materialsproject.org/materials/insertion_electrodes/?${params}`, {
+      headers: { "x-api-key": apiKey() },
+      cache: "no-store",
+    });
+  } catch (e) {
+    throw new HttpError(502, `Could not reach Materials Project: ${(e as Error).message}`);
+  }
+  if (!res.ok) throw new HttpError(502, `Materials Project error ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const json = (await res.json()) as { data?: Doc[]; meta?: { total_doc?: number } };
+  const results = (json.data ?? []).map((d) => {
+    // Voltage profile: consecutive steps (adj_pairs) as cumulative gravimetric capacity vs voltage.
+    let cap = 0;
+    const profile = ((d.adj_pairs as Doc[] | undefined) ?? []).map((p) => {
+      const start = cap;
+      cap += (p.capacity_grav as number) ?? 0;
+      return { from: start, to: cap, voltage: p.average_voltage as number };
+    });
+    const out = { ...d, profile };
+    delete (out as Doc).adj_pairs;
+    return out;
+  });
+  return { total: json.meta?.total_doc ?? results.length, results };
+}
+
+/** Oxidation states (bond-valence analysis), summarised per element and valence. */
+export async function getOxidation(id: string) {
+  if (!MATERIAL_ID.test(id)) throw new HttpError(422, "Material ids look like 'mp-149'.");
+  let res: Response;
+  try {
+    res = await fetch(
+      `https://api.materialsproject.org/materials/oxidation_states/?material_ids=${encodeURIComponent(id)}&_fields=possible_species,possible_valences,average_oxidation_states,method,structure`,
+      { headers: { "x-api-key": apiKey() }, cache: "no-store" },
+    );
+  } catch (e) {
+    throw new HttpError(502, `Could not reach Materials Project: ${(e as Error).message}`);
+  }
+  if (!res.ok) throw new HttpError(502, `Materials Project error ${res.status}`);
+  const doc = ((await res.json()).data ?? [])[0] as
+    | { possible_species?: string[]; possible_valences?: number[]; average_oxidation_states?: Record<string, number>; method?: string; structure?: { sites: { species: { element: string }[] }[] } }
+    | undefined;
+  if (!doc) throw new HttpError(404, "No oxidation-state analysis for this material.");
+  // Count sites per (element, valence): reveals mixed valence, e.g. Fe2+ and Fe3+ in Fe3O4.
+  const counts = new Map<string, { element: string; valence: number; sites: number }>();
+  doc.structure?.sites.forEach((s, i) => {
+    const element = s.species[0]?.element;
+    const valence = doc.possible_valences?.[i];
+    if (!element || valence === undefined) return;
+    const key = `${element}:${valence}`;
+    const cur = counts.get(key) ?? { element, valence, sites: 0 };
+    cur.sites++;
+    counts.set(key, cur);
+  });
+  return {
+    method: doc.method ?? null,
+    average: doc.average_oxidation_states ?? {},
+    species: doc.possible_species ?? [],
+    sites: [...counts.values()].sort((a, b) => a.element.localeCompare(b.element) || a.valence - b.valence),
+  };
+}
+
 /** Isostructural analogues: same anonymous formula (e.g. AB2) and same space group. */
 export async function similarMaterials(id: string) {
   if (!MATERIAL_ID.test(id)) throw new HttpError(422, "Material ids look like 'mp-149'.");

@@ -1,15 +1,17 @@
 "use client";
 
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, ExternalLink, FileDown } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
 
 import type { Structure } from "@/components/crystal-viewer";
-import { Badge, Card, CardTitle, Notice } from "@/components/ui";
+import { Badge, Button, Card, CardTitle, Notice } from "@/components/ui";
 import { apiGet } from "@/lib/api";
+import { downloadMaterialReport } from "@/lib/report";
 
 import { ElectronicPlot } from "./electronic-plot";
+import { FermiSection } from "./fermi-section";
 import { XrdPlot } from "./xrd-plot";
 
 // three.js is ~600 kB: load it only on this page, in the browser.
@@ -38,6 +40,21 @@ const GROUPS: [string, [string, string, string?][]][] = [
   ["Surfaces", [["weighted_surface_energy", "Weighted surface energy", "J/m²"], ["weighted_work_function", "Work function", "eV"], ["surface_anisotropy", "Surface anisotropy"], ["shape_factor", "Shape factor"]]],
 ];
 
+type Oxidation = {
+  method: string | null;
+  average: Record<string, number>;
+  species: string[];
+  sites: { element: string; valence: number; sites: number }[];
+};
+
+const SUP: Record<string, string> = { "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹", ".": "·" };
+/** 3 → "³⁺", -2 → "²⁻", 0 → "⁰", 2.67 → "²·⁶⁷⁺" */
+export function charge(v: number): string {
+  if (v === 0) return "⁰";
+  const mag = String(+Math.abs(v).toFixed(2)).replace(/^1$/, "");
+  return [...mag].map((c) => SUP[c] ?? c).join("") + (v > 0 ? "⁺" : "⁻");
+}
+
 function show(v: Value): string | null {
   if (v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length)) return null;
   if (typeof v === "boolean") return v ? "Yes" : "No";
@@ -50,6 +67,8 @@ export function MaterialDetail({ id: idPromise }: { id: Promise<string> }) {
   const id = use(idPromise);
   const [mat, setMat] = useState<Material | null>(null);
   const [similar, setSimilar] = useState<Similar | null>(null);
+  const [oxidation, setOxidation] = useState<Oxidation | null>(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -60,6 +79,9 @@ export function MaterialDetail({ id: idPromise }: { id: Promise<string> }) {
     apiGet<Similar>(`/materials/${encodeURIComponent(id)}/similar`)
       .then((s) => live && setSimilar(s))
       .catch(() => {});
+    apiGet<Oxidation>(`/materials/${encodeURIComponent(id)}/oxidation`)
+      .then((o) => live && setOxidation(o))
+      .catch(() => {}); // not every material has an oxidation-state analysis (e.g. metals)
     return () => {
       live = false;
     };
@@ -86,14 +108,32 @@ export function MaterialDetail({ id: idPromise }: { id: Promise<string> }) {
                 {mat.is_stable === true && <Badge>Stable</Badge>}
               </p>
             </div>
-            <a
-              href={`https://next-gen.materialsproject.org/materials/${mat.material_id}`}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline"
-            >
-              View on Materials Project <ExternalLink className="size-3.5" aria-hidden />
-            </a>
+            <div className="flex flex-wrap items-center gap-4">
+              <Button
+                variant="ghost"
+                loading={pdfBusy}
+                onClick={async () => {
+                  setPdfBusy(true);
+                  try {
+                    await downloadMaterialReport({ material: mat, groups: GROUPS, format: (v) => show(v as Value), oxidation, similar: similar?.results ?? [] });
+                  } catch (e) {
+                    setError(`Could not create the PDF: ${(e as Error).message}`);
+                  } finally {
+                    setPdfBusy(false);
+                  }
+                }}
+              >
+                <FileDown className="size-4" aria-hidden /> PDF report
+              </Button>
+              <a
+                href={`https://next-gen.materialsproject.org/materials/${mat.material_id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline"
+              >
+                View on Materials Project <ExternalLink className="size-3.5" aria-hidden />
+              </a>
+            </div>
           </header>
 
           <div className="grid gap-6 lg:grid-cols-[minmax(0,26rem)_1fr]">
@@ -103,6 +143,28 @@ export function MaterialDetail({ id: idPromise }: { id: Promise<string> }) {
             </Card>
 
             <div className="grid gap-4 sm:grid-cols-2">
+              {oxidation && oxidation.sites.length > 0 && (
+                <Card className="p-4" >
+                  <CardTitle>Oxidation states</CardTitle>
+                  <ul className="flex flex-wrap gap-2" aria-label="Oxidation states by site">
+                    {oxidation.sites.map((s) => (
+                      <li key={`${s.element}${s.valence}`} className="rounded-lg border border-line bg-surface-2 px-2.5 py-1 text-sm">
+                        <span className="font-semibold">
+                          {s.element}
+                          {charge(s.valence)}
+                        </span>
+                        <span className="ml-1.5 text-xs text-muted">
+                          ×{s.sites} site{s.sites === 1 ? "" : "s"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {oxidation.sites.some((a) => oxidation.sites.some((b) => a.element === b.element && a.valence !== b.valence)) && (
+                    <p className="mt-2 text-xs text-accent">Mixed valence: one element occurs in more than one oxidation state.</p>
+                  )}
+                  <p className="mt-2 text-xs text-muted">{oxidation.method ?? "Bond valence analysis"} (Materials Project)</p>
+                </Card>
+              )}
               {GROUPS.map(([title, fields]) => {
                 const rows = fields.map(([f, label, unit]) => [label, show(mat[f]), unit] as const).filter(([, v]) => v !== null);
                 if (!rows.length) return null;
@@ -129,6 +191,8 @@ export function MaterialDetail({ id: idPromise }: { id: Promise<string> }) {
           {mat.structure && <XrdPlot structure={mat.structure} formula={mat.formula_pretty} />}
 
           <ElectronicPlot id={mat.material_id} />
+
+          {mat.is_metal === true && <FermiSection id={mat.material_id} />}
 
           {similar && similar.results.length > 0 && (
             <Card className="p-0">

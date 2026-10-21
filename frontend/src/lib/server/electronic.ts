@@ -29,7 +29,7 @@ export function legacyTaskId(id: string): string {
 }
 
 async function openData(key: string): Promise<Record<string, unknown>> {
-  const res = await fetch(`${S3}/${key}`, { signal: AbortSignal.timeout(20000) });
+  const res = await fetch(`${S3}/${key}`, { signal: AbortSignal.timeout(Number(process.env.S3_TIMEOUT_MS ?? 25000)) });
   if (!res.ok) throw new HttpError(404, "Calculated data file not found in the Materials Project open data.");
   const json = JSON.parse(gunzipSync(Buffer.from(await res.arrayBuffer())).toString("utf8"));
   const doc = Array.isArray(json) ? json[0] : json;
@@ -45,7 +45,7 @@ type BSData = {
   efermi: number;
   lattice_rec: { matrix: Vec[] };
   kpoints: Vec[]; // fractional reciprocal coordinates
-  bands: Record<string, number[][]>;
+  bands: Record<string, unknown>;
   branches: { start_index: number; end_index: number; name: string }[];
   is_metal: boolean;
   band_gap: { energy: number; direct: boolean; transition: string | null };
@@ -79,8 +79,8 @@ function slimBandStructure(d: BSData) {
     add(x[br.start_index], from);
     add(x[br.end_index], to);
   }
-  const keep = (spin: number[][]) =>
-    spin
+  const keep = (spin: unknown) =>
+    bandArray(spin)
       .map((band) => band.map((e) => e - d.efermi))
       .filter((band) => band.some((e) => Math.abs(e) <= WINDOW))
       .map((band) => band.map((e) => round(e)));
@@ -115,9 +115,72 @@ function slimDos(d: DOSData) {
   };
 }
 
-export async function getElectronic(materialId: string) {
-  "use cache";
-  cacheLife("weeks"); // calculated data doesn't change between database releases
+/** Band arrays come either as plain nested lists or as serialised numpy arrays ({dtype, data}). */
+function bandArray(v: unknown): number[][] {
+  if (Array.isArray(v)) return v as number[][];
+  if (v && typeof v === "object" && Array.isArray((v as { data?: unknown }).data)) return (v as { data: number[][] }).data;
+  throw new HttpError(502, "Unexpected band-structure format.");
+}
+
+/**
+ * Fermi surface data: bands crossing E_F on the full periodic k-grid.
+ * MP's uniform calculation stores one of each ±k pair (time-reversal half grid);
+ * the full n×n×n grid is rebuilt with E(−k) = E(k). Energies are sent in meV relative to E_F.
+ */
+async function fermiData(materialId: string) {
+
+  const key = process.env.MP_API_KEY;
+  if (!key) throw new HttpError(503, "Materials Project API key is not configured.");
+  const res = await fetch(
+    `https://api.materialsproject.org/materials/electronic_structure/?material_ids=${encodeURIComponent(materialId)}&_fields=dos,is_metal`,
+    { headers: { "x-api-key": key } },
+  );
+  if (!res.ok) throw new HttpError(502, `Materials Project error ${res.status}`);
+  const doc = ((await res.json()).data ?? [])[0] as { dos?: { task_id?: string; total?: Record<string, { task_id?: string }> }; is_metal?: boolean } | undefined;
+  const task = doc?.dos?.task_id ?? doc?.dos?.total?.["1"]?.task_id;
+  if (!task) throw new HttpError(404, "No uniform band-structure calculation for this material.");
+
+  const d = (await openData(`bandstructures/${legacyTaskId(task)}.json.gz`)) as {
+    efermi: number;
+    kpoints: Vec[];
+    bands: Record<string, unknown>;
+    lattice_rec: { matrix: Vec[] };
+    is_metal: boolean;
+  };
+  if (!d.is_metal) return { metal: false as const };
+
+  // Grid size from the k-point spacing.
+  let step = 1;
+  for (const k of d.kpoints) for (const c of k) if (Math.abs(c) > 1e-6) step = Math.min(step, Math.abs(c));
+  const n = Math.round(1 / step);
+  if (n < 4 || n > 64) throw new HttpError(502, `Unsupported k-grid (${n}).`);
+  const wrap = (c: number) => ((Math.round(c * n) % n) + n) % n;
+  const index = (k: Vec) => (wrap(k[0]) * n + wrap(k[1])) * n + wrap(k[2]);
+  const negIndex = (k: Vec) => (wrap(-k[0]) * n + wrap(-k[1])) * n + wrap(-k[2]);
+
+  const spins = Object.keys(d.bands).filter((s) => s === "1" || s === "-1");
+  const sheets: { spin: number; band: number; values: number[] }[] = [];
+  for (const spin of spins) {
+    const bands = bandArray(d.bands[spin]);
+    bands.forEach((band, bi) => {
+      const rel = band.map((e) => e - d.efermi);
+      if (!(Math.min(...rel) < 0 && Math.max(...rel) > 0)) return; // only bands that cross E_F
+      const grid = new Array<number>(n * n * n).fill(NaN);
+      d.kpoints.forEach((k, i) => {
+        grid[index(k)] = rel[i];
+        grid[negIndex(k)] = rel[i];
+      });
+      const missing = grid.filter((v) => Number.isNaN(v)).length;
+      if (missing > grid.length * 0.01) throw new HttpError(502, `The k-grid could not be completed by symmetry (${missing} points missing).`);
+      // Fill any isolated gaps with the neighbour average (rare).
+      for (let i = 0; i < grid.length; i++) if (Number.isNaN(grid[i])) grid[i] = grid[(i + 1) % grid.length] || 0;
+      sheets.push({ spin: Number(spin), band: bi, values: grid.map((v) => Math.round(v * 1000)) }); // meV
+    });
+  }
+  return { metal: true as const, n, reciprocal: d.lattice_rec.matrix, sheets };
+}
+
+async function electronicData(materialId: string) {
 
   const key = process.env.MP_API_KEY;
   if (!key) throw new HttpError(503, "Materials Project API key is not configured.");
@@ -142,3 +205,49 @@ export async function getElectronic(materialId: string) {
   if (!bs && !dos) throw new HttpError(404, "Band structure and DOS data are not available for this material.");
   return { path: path ?? null, bandstructure: bs, dos };
 }
+
+type Outcome<T> = { ok: T } | { error: { status: number; message: string } };
+
+/** Run `fn`; HttpErrors become plain data so they survive the `use cache` boundary (classes don't). */
+async function capture<T>(fn: () => Promise<T>): Promise<Outcome<T>> {
+  try {
+    return { ok: await fn() };
+  } catch (e) {
+    // Only permanent outcomes ("no data for this material") are returned — and therefore cached.
+    // Transient failures (timeouts, upstream 5xx) throw, so they are never cached.
+    if (e instanceof HttpError && e.status < 500) return { error: { status: e.status, message: e.message } };
+    throw e;
+  }
+}
+
+function unwrap<T>(o: Outcome<T>): T {
+  if ("error" in o) throw new HttpError(o.error.status, o.error.message);
+  return o.ok;
+}
+
+// Successful results are cached for a week; "not available" outcomes too (they don't change
+// between database releases). Transient failures (network) throw and are not cached.
+async function cachedElectronic(materialId: string) {
+  "use cache";
+  cacheLife("weeks");
+  return capture(() => electronicData(materialId));
+}
+
+async function cachedFermi(materialId: string) {
+  "use cache";
+  cacheLife("weeks");
+  return capture(() => fermiData(materialId));
+}
+
+async function resolve<T>(load: () => Promise<Outcome<T>>): Promise<T> {
+  let outcome: Outcome<T>;
+  try {
+    outcome = await load();
+  } catch {
+    throw new HttpError(504, "The Materials Project data took too long to download — please try again in a moment.");
+  }
+  return unwrap(outcome);
+}
+
+export const getElectronic = (materialId: string) => resolve(() => cachedElectronic(materialId));
+export const getFermi = (materialId: string) => resolve(() => cachedFermi(materialId));
