@@ -28,3 +28,6 @@ backend/models/*.pt
 .DS_Store
 Thumbs.db
 .vscode/
+
+# E2E screenshots
+e2e/out/

@@ -83,7 +83,7 @@ $env:MP_API_KEY = "your-materials-project-key"   # only needed for the Materials
 pnpm dev                                         # http://localhost:3000
 ```
 
-Tests: `pnpm test` (browser steel model vs. scikit-learn), `pnpm lint`, `pnpm build`;
+Tests: `pnpm test`, `pnpm lint`, `pnpm build` (see Tests and CI below);
 Python tests: `cd backend; .venv\Scripts\python -m pytest`.
 
 ### Retraining (optional — trained models are already in the repo)
@@ -112,12 +112,28 @@ Notes on the method:
 - Class-weighted loss handles the ~30× class imbalance; the reported numbers come
   from a stratified held-out test split never used for model selection.
 
-### Tests
+### Tests and CI
 
 ```powershell
+cd frontend; pnpm lint; pnpm test; pnpm build        # unit tests: models, XRD, hulls, image analysis, rate limiter
 cd backend;  .venv\Scripts\python -m pytest
-cd frontend; pnpm lint; pnpm build
+python e2e/smoke.py https://smse-toolkit-website.vercel.app   # browser end-to-end (pip install -r e2e/requirements.txt)
 ```
+
+GitHub Actions runs `.github/workflows/ci.yml` (lint, type-check, unit tests, build, pytest) on
+every push and pull request, and `e2e.yml` (the browser smoke test) after each production
+deploy, weekly, and on demand.
+
+### Caching and rate limiting
+
+- API responses carry CDN `Cache-Control` headers: searches 1 h, single materials / phase
+  diagrams / citations 1 day, band structures and Fermi surfaces 1 week (each with
+  stale-while-revalidate). Errors are never cached. Server-side `use cache` additionally keeps
+  calculation files and the news feed between requests.
+- `frontend/src/proxy.ts` limits each IP to 60 API requests a minute, and 10 a minute for
+  band-structure / Fermi-surface downloads, answering `429` with `Retry-After`. The limit is
+  in memory per server instance: it stops floods and runaway scripts from using up the
+  Materials Project quota; the CDN cache is the main protection.
 
 ## Data and licences
 
